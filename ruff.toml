@@ -1,0 +1,55 @@
+# ruff.toml - Configuration for Ruff linting and formatting
+
+# Use the latest stable version of rules
+target-version = "py310"  # or "py39", "py310", etc., depending on your Python version
+
+# Enable linting and formatting
+line-length = 88  # Matches Black's default
+
+[format]
+# Enable Ruff's built-in formatter (alternative to Black)
+docstring-code-format = true  # Format code blocks inside docstrings
+
+[lint]
+# Enable popular linting rules
+select = [
+    "E",  # Pyflakes (general errors)
+    "F",  # Pyflakes (undefined names, unused imports, etc.)
+    "I",  # isort (import sorting)
+    "N",  # pep8-naming (naming conventions)
+    "UP", # pyupgrade (suggest modern Python syntax)
+    "B",  # flake8-bugbear (common pitfalls)
+    "S",  # flake8-bandit (security issues)
+    "C4", # flake8-comprehensions (optimize comprehensions)
+    "PERF", # perflint (performance optimizations)
+    "PL", # pylint (general static analysis)
+]
+
+# Ignore certain warnings that might be overly strict for ML projects
+ignore = [
+    "B905",  # Avoid using `zip()` without `strict=True`
+    "E501",  # Line length (since we're using Black for formatting)
+    "S101",  # `assert` usage (sometimes useful in experiments)
+    "S311",
+    "N812",
+]
+
+# Exclude unnecessary directories (e.g., virtual environments, data, logs)
+exclude = [
+    ".venv",
+    "venv",
+    "__pycache__",
+    "logs",
+    "weigths",
+    "data",
+]
+
+[lint.isort]
+# Configure isort rules for import sorting
+known-first-party = ["ismir-jazzmus"]  # Change this to match your project name
+lines-after-imports = 2  # Space after imports
+lines-between-types = 1  # Space between import types (e.g., stdlib, third-party, local)
+
+[lint.pyupgrade]
+# Automatically suggest upgrading to modern Python syntax
+keep-runtime-typing = true  # Maintain runtime type hints
