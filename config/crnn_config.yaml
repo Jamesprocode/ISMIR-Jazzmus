@@ -1,0 +1,5 @@
+model_type: "crnn"
+epochs: 200
+patience: 4
+batch_size: 16
+logger: false
