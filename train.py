@@ -2,27 +2,28 @@ import gc
 
 import fire
 import torch
+
 from pytorch_lightning import Trainer
 from pytorch_lightning.callbacks import EarlyStopping, ModelCheckpoint
 from pytorch_lightning.loggers import CSVLogger, WandbLogger
 
 from nn.crnn.model import CTCTrainedCRNN
 from utils.ctc_datamodule import CTCDataModule
+from utils.file_utils import check_folders, load_config
 from utils.seed import seed_everything
 
 
 def train(
     ds_name: str,
     fold: int = 0,
-    model_type: str = "crnn",
-    epochs: int = 200,
-    patience: int = 4,
-    batch_size: int = 16,
-    logger=False,
+    config: str = None,
 ):
     gc.collect()
     torch.cuda.empty_cache()
     seed_everything(42, benchmark=True)
+    check_folders()
+
+    model_type, epochs, patience, batch_size, logger = load_config(config).values()
 
     print("EXPERIMENT TRAINING")
     print(f"\tDataset: {ds_name}")
