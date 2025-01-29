@@ -1,7 +1,7 @@
 # ruff.toml - Configuration for Ruff linting and formatting
 
 # Use the latest stable version of rules
-target-version = "py310"  # or "py39", "py310", etc., depending on your Python version
+target-version = "py312"  # or "py39", "py310", etc., depending on your Python version
 
 # Enable linting and formatting
 line-length = 88  # Matches Black's default
