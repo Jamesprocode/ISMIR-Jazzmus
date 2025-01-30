@@ -1,6 +1,6 @@
 <p align="center">
-  <a href=""><img src="https://i.imgur.com/Iu7CvC1.png" alt="PRAIG-logo" width="100" style="margin: 0 20"></a>
-  <a href=""><img src="https://i.imgur.com/Iu7CvC1.png" alt="JKU-logo" width="100" style="margin: 0 0 0 20"></a>
+  <a href=""><img src="https://i.imgur.com/Iu7CvC1.png" alt="PRAIG-logo" width="100"></a>
+  <a href=""><img src="https://imgur.com/H2YEzDY.png" alt="JKU-logo" width="40"></a>
 </p>
 
 <h1 align="center">Jazzmus</h1>
