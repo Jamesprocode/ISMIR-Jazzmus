@@ -10,7 +10,7 @@ from lightning.pytorch.loggers import CSVLogger, WandbLogger
 from nn.crnn.model import CTCTrainedCRNN
 from utils.ctc_datamodule import CTCDataModule
 from utils.file_utils import check_folders, load_config
-from utils.seed import seed_everything
+from lightning.pytorch import seed_everything
 
 
 def train(
@@ -21,7 +21,7 @@ def train(
 ):
     gc.collect()
     torch.cuda.empty_cache()
-    seed_everything(42, benchmark=True)
+    seed_everything(seed=42, workers=True)
     check_folders()
 
     model_type, epochs, patience, batch_size, logger, split_enc, harm_proc = (
