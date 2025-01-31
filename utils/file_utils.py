@@ -25,6 +25,14 @@ def load_config(file_path: str) -> dict:
     return config
 
 
+def list_files_recursively(directory):
+    files = []
+    for dirpath, dirnames, filenames in os.walk(directory):
+        for filename in filenames:
+            files.append(os.path.join(dirpath, filename))
+    return sorted(files)
+
+
 if __name__ == "__main__":
     # Example usage:
     config_dict = load_config("config.yaml")

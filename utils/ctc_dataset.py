@@ -8,6 +8,7 @@ from torch.utils.data import Dataset
 
 from utils.data_preprocessing import preprocess_image
 from utils.encoding_convertions import GtParser
+from utils.file_utils import list_files_recursively
 
 
 class CTCDataset(Dataset):
@@ -18,6 +19,8 @@ class CTCDataset(Dataset):
         split_files,
         width_reduction: int = 2,
         sample_files=None,
+        split_enc: bool = False,
+        harm_proc: bool = False,
     ):
         super().__init__()
         self.ds_name = ds_name
@@ -25,10 +28,12 @@ class CTCDataset(Dataset):
         self.split_files = split_files
         self.width_reduction = width_reduction
         self.sample_files = sample_files
-        self.init(vocab_name="ctc_w2i")
+        self.split_enc = split_enc
+        self.harm_proc = harm_proc
+        self.init(vocab_name="w2i")
 
     def init(self, vocab_name: str = "w2i"):
-        self.gt_parser = GtParser()
+        self.gt_parser = GtParser(split_enc=self.split_enc, process_harm=self.harm_proc)
 
         # Check dataset
         # assert self.ds_name in DATASETS, f"Dataset {self.ds_name} not supported."
@@ -43,11 +48,12 @@ class CTCDataset(Dataset):
 
         # Get data
         self.X, self.Y = self.get_images_and_transcripts_files()
+        print(f"Example of X: {self.X[0]} | Y: {self.Y[0]}")
 
         # Get vocab
-        vocab_folder = os.path.join("data", "vocabs")
+        vocab_folder = os.path.join("data", self.ds_name, "vocabs")
         os.makedirs(vocab_folder, exist_ok=True)
-        vocab_name = self.ds_name + f"_{vocab_name}.json"
+        vocab_name = f"{vocab_name}.json"
         self.w2i_path = os.path.join(vocab_folder, vocab_name)
         self.w2i, self.i2w = self.check_and_retrieve_vocabulary()
 
@@ -75,7 +81,7 @@ class CTCDataset(Dataset):
         return torch.tensor(y, dtype=torch.int32)
 
     def get_images_and_transcripts_files(self):
-        # partition_file = f"data/splits/{self.ds_name}/{self.split}.txt"
+        # split_files =  [train_files, val_files, test_files]
         if self.split == "train":
             partition_file = self.split_files[0]
         elif self.split == "val":
@@ -103,37 +109,34 @@ class CTCDataset(Dataset):
 
         images = []
         transcripts = []
-        with open(partition_file) as f:
-            for line in f.read().splitlines():
-                filename = line.strip()
-                # data/gt/austrian/00001/r2Gxf_7
-                transcripts.append(f"{filename}.txt")
 
-                filename = filename.replace("/gt", "/jpg")
+        for f in partition_file:
+            clean_f = f.strip()
+            image_path, transcription_path = clean_f.split(" ")
 
-                # check if an image size is too small for the model poolings
-                if not os.path.isfile(f"{filename}.jpg"):
-                    print(f"Image {filename} does not exist. Skipping it.")
-                    # pop las element from transcripts
-                    transcripts.pop()
-                    continue
-                # print(f"Checking image {line}.jpg")
-                image = cv2.imread(f"{filename}.jpg", cv2.IMREAD_GRAYSCALE)
-                h, w = image.shape
-                width_reduction = 2**1  # number of poolings in second dimension
-                height_reduction = 2**4  # number of poolings in first dimension
-                h_final = h // height_reduction
-                w_final = w // width_reduction
+            # check if the files exist
+            if not os.path.isfile(image_path) or not os.path.isfile(transcription_path):
+                print(f"File {image_path} or {transcription_path} does not exist.")
+                continue
 
-                if h_final < 1 or w_final < 1:
-                    print(
-                        f"Image {line} is too small for the model poolings. Skipping it."
-                    )
-                    # pop las element from transcripts
-                    transcripts.pop()
-                    continue
+            # check if after encoder the size is bigger than the sequence length
+            image = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)
+            h, w = image.shape
+            width_reduction = 2**1  # number of poolings in second dimension
+            height_reduction = 2**4  # number of poolings in first dimension
+            h_final = h // height_reduction
+            w_final = w // width_reduction
 
-                images.append(f"{line}.jpg")
+            if h_final < 1 or w_final < 1:
+                print(
+                    f"Image {image_path} is too small for the model poolings. Skipping it."
+                )
+                # pop las element from transcripts
+                transcripts.pop()
+                continue
+
+            images.append(image_path)
+            transcripts.append(transcription_path)
 
         return images, transcripts
 
@@ -157,11 +160,12 @@ class CTCDataset(Dataset):
         for split in self.split_files:
             # partition_file = f"data/splits/{self.ds_name}/{split}.txt"
             partition_file = split
-            with open(partition_file) as f:
-                for line in f.read().splitlines():
-                    filename = line.strip()
-                    transcript = self.gt_parser.convert(src_file=f"{filename}.txt")
-                    vocab.extend(transcript)
+
+            for line in partition_file:
+                filename = line.strip()
+                # filename --> img_path gt_path
+                transcript = self.gt_parser.convert(src_file=filename.split(" ")[1])
+                vocab.extend(transcript)
         vocab = sorted(set(vocab))
 
         w2i = {}
@@ -184,20 +188,17 @@ class CTCDataset(Dataset):
 
         # Recursively list files in the directory and its subdirectories
         # for root, dirs, files in os.walk(f"data/gt/{self.ds_name}"):
-        # TODO
-        for root, _, files in os.walk("data/gt/"):
-            for t in files:
-                if t.endswith(".txt") and not t.startswith("."):
-                    path_gt_file = os.path.join(root, t)
 
-                    transcript = self.gt_parser.convert(src_file=path_gt_file)
-                    max_seq_len = max(max_seq_len, len(transcript))
+        files = list_files_recursively(f"data/{self.ds_name}/gt/")
 
-                    image_path = path_gt_file.replace(".txt", ".jpg").replace(
-                        "gt", "jpg"
-                    )
-                    image = preprocess_image(path=image_path, split=self.split)
-                    max_img_len = max(max_img_len, image.shape[2])
+        for t in files:
+            if t.endswith(".txt") and not t.startswith("."):
+                transcript = self.gt_parser.convert(src_file=t)
+                max_seq_len = max(max_seq_len, len(transcript))
+
+                image_path = t.replace(".txt", ".jpg").replace("gt", "jpg")
+                image = preprocess_image(path=image_path, split=self.split)
+                max_img_len = max(max_img_len, image.shape[2])
 
         self.max_seq_len = max_seq_len
         self.max_img_len = max_img_len

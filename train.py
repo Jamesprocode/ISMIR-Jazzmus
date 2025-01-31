@@ -3,9 +3,9 @@ import gc
 import fire
 import torch
 
-from pytorch_lightning import Trainer
-from pytorch_lightning.callbacks import EarlyStopping, ModelCheckpoint
-from pytorch_lightning.loggers import CSVLogger, WandbLogger
+from lightning.pytorch import Trainer
+from lightning.pytorch.callbacks import EarlyStopping, ModelCheckpoint
+from lightning.pytorch.loggers import CSVLogger, WandbLogger
 
 from nn.crnn.model import CTCTrainedCRNN
 from utils.ctc_datamodule import CTCDataModule
@@ -16,6 +16,7 @@ from utils.seed import seed_everything
 def train(
     ds_name: str,
     fold: int = 0,
+    debug: bool = False,
     config: str = None,
 ):
     gc.collect()
@@ -23,7 +24,9 @@ def train(
     seed_everything(42, benchmark=True)
     check_folders()
 
-    model_type, epochs, patience, batch_size, logger = load_config(config).values()
+    model_type, epochs, patience, batch_size, logger, split_enc, harm_proc = (
+        load_config(config).values()
+    )
 
     print("EXPERIMENT TRAINING")
     print(f"\tDataset: {ds_name}")
@@ -33,12 +36,17 @@ def train(
     print(f"\tPatience: {patience}")
     print(f"\tBatch size: {batch_size}")
     print(f"\tLogger: {logger}")
+    print(f"\tSplit encoding: {split_enc}")
+    print(f"\tHarmony processing: {harm_proc}")
 
-    datamodule = CTCDataModule(ds_name, fold, batch_size).setup(stage="fit")
+    datamodule = CTCDataModule(
+        ds_name, fold, batch_size, split_enc=split_enc, harm_proc=harm_proc
+    )
+    datamodule.setup(stage="fit")
     w2i, i2w = datamodule.get_w2i_and_i2w()
 
     model = CTCTrainedCRNN(
-        w2i, i2w, max_image_len=datamodule.get_max_img_len(), fold=fold
+        w2i=w2i, i2w=i2w, max_image_len=datamodule.get_max_img_len(), fold=fold
     )
 
     datamodule.width_reduction = model.width_reduction
@@ -70,7 +78,8 @@ def train(
         ),
     ]
 
-    # Something Wandb in servers crashes
+    # Wandb may crash in some servers
+
     my_logger = None
     if logger:
         my_logger = WandbLogger(
@@ -78,6 +87,7 @@ def train(
             name=f"{ds_name}_{fold}",
             log_model=True,
             group=f"{model_type}",
+            save_dir="logs",
         )
     else:
         my_logger = CSVLogger("logs", name=f"{ds_name}_{fold}")
@@ -90,9 +100,11 @@ def train(
         deterministic=False,
         benchmark=False,
         precision="16-mixed",
+        accelerator="auto",
+        fast_dev_run=debug,
     )
 
-    trainer.fit(model, datamodule)
+    trainer.fit(model=model, datamodule=datamodule)
 
     # End of training, test partition
     model = CTCTrainedCRNN.load_from_checkpoint(callbacks[0].best_model_path)

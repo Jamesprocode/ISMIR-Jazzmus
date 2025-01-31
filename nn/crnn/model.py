@@ -3,7 +3,7 @@ import random
 
 import torch
 
-from lightning.pytorch import LightningModule
+from lightning import LightningModule
 from torch.nn import CTCLoss
 from torchinfo import summary
 
@@ -17,7 +17,7 @@ class CTCTrainedCRNN(LightningModule):
         self,
         w2i,
         i2w,
-        n_fold=0,
+        fold=0,
         ytest_i2w=None,
         max_image_len=100,
         freeze=False,
@@ -44,7 +44,7 @@ class CTCTrainedCRNN(LightningModule):
         self.Y = []
         self.Y_hat = []
         self.names = []
-        self.n_fold = n_fold
+        self.n_fold = fold
 
     def load_test_vocab(self, test_vocab):
         if test_vocab:
@@ -163,8 +163,8 @@ class CTCTrainedCRNN(LightningModule):
 
             # save predictions to json
             prediction_results = []
-            for name, prediction in zip(self.names, self.Y_hat):
-                prediction_results.append({"name": name[0], "prediction": prediction})
+            for n, prediction in zip(self.names, self.Y_hat):
+                prediction_results.append({"name": n[0], "prediction": prediction})
             with open("predictions.json", "w") as f:
                 json.dump(prediction_results, f)
             print("Predictions saved to predictions.json")

@@ -13,6 +13,8 @@ class CTCDataModule(LightningDataModule):
         batch_size: int = 16,
         num_workers: int = 20,
         width_reduction: int = 2,
+        split_enc: bool = False,
+        harm_proc: bool = False,
     ):
         super().__init__()
         self.ds_name = ds_name
@@ -23,17 +25,19 @@ class CTCDataModule(LightningDataModule):
         self.batch_size = batch_size
         self.num_workers = num_workers
         self.width_reduction = width_reduction
+        self.split_enc = split_enc
+        self.harm_proc = harm_proc
 
-        self._load_splits()
+        self.load_splits()
 
-    def _load_splits(self):
-        with open(f"data/splits/{self.ds_name}/train_{self.fold}.dat") as f:
+    def load_splits(self):
+        with open(f"data/{self.ds_name}/splits/train_{self.fold}.dat") as f:
             self.train_split = f.readlines()
 
-        with open(f"data/splits/{self.ds_name}/val_{self.fold}.dat") as f:
+        with open(f"data/{self.ds_name}/splits/val_{self.fold}.dat") as f:
             self.val_split = f.readlines()
 
-        with open(f"data/splits/{self.ds_name}/test_{self.fold}.dat") as f:
+        with open(f"data/{self.ds_name}/splits/test_{self.fold}.dat") as f:
             self.test_split = f.readlines()
 
     def setup(self, stage: str):
@@ -43,6 +47,8 @@ class CTCDataModule(LightningDataModule):
                 split_files=[self.train_split, self.val_split, self.test_split],
                 split="train",
                 width_reduction=self.width_reduction,
+                split_enc=self.split_enc,
+                harm_proc=self.harm_proc,
             )
             self.val_ds = CTCDataset(
                 ds_name=self.ds_name,
@@ -75,6 +81,7 @@ class CTCDataModule(LightningDataModule):
             shuffle=True,
             num_workers=self.num_workers,
             collate_fn=ctc_batch_preparation,
+            persistent_workers=True,
         )
 
     def predict_dataloader(self):
@@ -82,6 +89,7 @@ class CTCDataModule(LightningDataModule):
             self.predict_ds,
             batch_size=1,
             num_workers=self.num_workers,
+            persistent_workers=True,
         )
 
     def val_dataloader(self):
@@ -90,6 +98,7 @@ class CTCDataModule(LightningDataModule):
             batch_size=1,
             shuffle=False,
             num_workers=self.num_workers,
+            persistent_workers=True,
         )
 
     def test_dataloader(self):
@@ -98,6 +107,7 @@ class CTCDataModule(LightningDataModule):
             batch_size=1,
             shuffle=False,
             num_workers=self.num_workers,
+            persistent_workers=True,
         )
 
     def get_w2i_and_i2w(self):

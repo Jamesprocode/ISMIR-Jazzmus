@@ -12,6 +12,7 @@ wandb/*
 .env
 joblib_cache/joblib
 data/*
+logs/*
 
 # Icon must end with two \r
 Icon
