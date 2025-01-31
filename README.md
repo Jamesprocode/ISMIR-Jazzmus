@@ -21,12 +21,6 @@
   <a href="#license">License</a>
 </p>
 
-<style>
-  .spaced-img {
-    margin: 0 25px; /* 50px total spacing between images */
-  }
-</style>
-
 ## About
 
 abc
