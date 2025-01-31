@@ -1,0 +1,7 @@
+model_type: "crnn"
+epochs: 200
+patience: 200
+batch_size: 16
+logger: true
+split_enc: true # symbol pos if true
+harm_proc: true # root chord if true
