@@ -25,21 +25,6 @@ def load_config(file_path: str) -> dict:
     return config
 
 
-def create_folds(files):
-    # given a list of files, create folds
-    from sklearn.model_selection import KFold
-
-    train, val, test = [], [], []
-    kf = KFold(n_splits=5, shuffle=True, random_state=42)
-    for train_idx, val_idx in kf.split(files):
-        train.append(files[train_idx])
-        val, test = (
-            files[val_idx][: len(val_idx) // 2],
-            files[val_idx][len(val_idx) // 2 :],
-        )
-    return train, val, test
-
-
 if __name__ == "__main__":
     # Example usage:
     config_dict = load_config("config.yaml")
