@@ -27,16 +27,19 @@ abc
 
 ## How To Use
 
-abc
-
-
-### Predict a sample
-Once trained a model, the script will generate the weights and the vocabulary associated to that training, to predict an image, use the weights, the vocabulary and a file where each line represents a path to a staff-level image to predict.
+### Prepare data
+Install dependencies with 
 ```python
-python3 predict.py
+pip install -r requirements.txt
+python3 utils/prepare_hf_dataset.py
 ```
-It accepts multiple params such as: --checkpoint_path weigths/crnn/austrian_0.ckpt --vocab data/vocabs/austrian_ctc_w2i.json --samples <file_path>
-This script will generate a predictions.json file with all the images and its corresponding prediction made by the model.
+
+This script will generate a folder structure in data/ with the name of the dataset (jazzmus) and its regions, annotations and splits.
+
+### Train
+```python
+bash train.sh
+```
 
 ## Cite
 
