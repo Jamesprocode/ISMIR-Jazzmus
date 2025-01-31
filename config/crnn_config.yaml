@@ -2,4 +2,6 @@ model_type: "crnn"
 epochs: 200
 patience: 4
 batch_size: 16
-logger: false
+logger: true
+split_enc: false # symbol pos if true
+harm_proc: false # root chord if true
