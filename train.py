@@ -53,7 +53,7 @@ def train(
 
     callbacks = [
         ModelCheckpoint(
-            dirpath=f"weigths/{model_type}",
+            dirpath=f"weights/{model_type}",
             filename=ds_name + f"_{fold}",
             monitor="val_ser",
             verbose=True,
