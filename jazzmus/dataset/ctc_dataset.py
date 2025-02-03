@@ -156,25 +156,24 @@ class CTCDataset(Dataset):
         return w2i, i2w
 
     def make_vocabulary(self):
-        vocab = []
+        vocab = set()
         for split in self.split_files:
-            # partition_file = f"data/splits/{self.ds_name}/{split}.txt"
             partition_file = split
 
             for line in partition_file:
                 filename = line.strip()
                 # filename --> img_path gt_path
                 transcript = self.gt_parser.convert(src_file=filename.split(" ")[1])
-                vocab.extend(transcript)
-        vocab = sorted(set(vocab))
+                vocab.update(transcript)
+        vocab = sorted(vocab)
 
         w2i = {}
         i2w = {}
-        for i, w in enumerate(vocab):
-            w2i[w] = i + 1
-            i2w[i + 1] = w
-        w2i["<blank>"] = 0
-        i2w[0] = "<blank>"
+        w2i = {"<blank>": 0}
+        i2w = {0: "<blank>"}
+        for i, w in enumerate(vocab, start=1):
+            w2i[w] = i
+            i2w[i] = w
 
         return w2i, i2w
 
