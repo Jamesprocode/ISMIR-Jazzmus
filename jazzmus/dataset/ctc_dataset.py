@@ -6,9 +6,9 @@ import torch
 
 from torch.utils.data import Dataset
 
-from utils.data_preprocessing import preprocess_image
-from utils.encoding_convertions import GtParser
-from utils.file_utils import list_files_recursively
+from jazzmus.dataset.data_preprocessing import preprocess_image
+from jazzmus.dataset.encoding_convertions import GtParser
+from jazzmus.utils.file_utils import list_files_recursively
 
 
 class CTCDataset(Dataset):

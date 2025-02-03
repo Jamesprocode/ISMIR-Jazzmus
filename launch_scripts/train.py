@@ -7,9 +7,9 @@ from lightning.pytorch import Trainer
 from lightning.pytorch.callbacks import EarlyStopping, ModelCheckpoint
 from lightning.pytorch.loggers import CSVLogger, WandbLogger
 
-from nn.crnn.model import CTCTrainedCRNN
-from utils.ctc_datamodule import CTCDataModule
-from utils.file_utils import check_folders, load_config
+from jazzmus.model.crnn.model import CTCTrainedCRNN
+from jazzmus.dataset.ctc_datamodule import CTCDataModule
+from jazzmus.utils.file_utils import check_folders, load_config
 from lightning.pytorch import seed_everything
 
 

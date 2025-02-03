@@ -27,18 +27,37 @@ abc
 
 ## How To Use
 
-### Prepare data
-Install dependencies with 
+## Install the package
+
+First install pytorch, following instructions for you machine [on this page](https://pytorch.org/get-started/locally/).
+
+Then install the rest of the dependencies with 
 ```python
 pip install -r requirements.txt
-python3 utils/prepare_hf_dataset.py
+```
+
+Finally, you can install the package.
+```python
+pip install .
+```
+
+If you plan to work on the package, we suggest to install in developer mode with
+```python
+pip install -e .
+```
+
+### Prepare data
+Run
+```python
+python3 launch_scripts/prepare_hf_dataset.py
 ```
 
 This script will generate a folder structure in data/ with the name of the dataset (jazzmus) and its regions, annotations and splits.
 
+
 ### Train
 ```python
-bash train.sh
+bash launc_scripts/train.sh
 ```
 
 ## Cite

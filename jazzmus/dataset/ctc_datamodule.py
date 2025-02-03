@@ -1,8 +1,8 @@
 from lightning.pytorch import LightningDataModule
 from torch.utils.data import DataLoader
 
-from utils.ctc_dataset import CTCDataset
-from utils.data_preprocessing import ctc_batch_preparation
+from jazzmus.dataset.ctc_dataset import CTCDataset
+from jazzmus.dataset.data_preprocessing import ctc_batch_preparation
 
 
 class CTCDataModule(LightningDataModule):

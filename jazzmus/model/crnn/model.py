@@ -7,9 +7,9 @@ from lightning import LightningModule
 from torch.nn import CTCLoss
 from torchinfo import summary
 
-from nn.crnn.modules import CRNN
-from utils.data_preprocessing import IMG_HEIGHT, NUM_CHANNELS
-from utils.metrics import compute_metrics
+from jazzmus.model.crnn.modules import CRNN
+from jazzmus.dataset.data_preprocessing import IMG_HEIGHT, NUM_CHANNELS
+from jazzmus.metrics import compute_metrics
 
 
 class CTCTrainedCRNN(LightningModule):

@@ -1,1 +1,0 @@
-python3 train.py -ds_name "jazzmus" -debug False -fold 0 -config "config/crnn_config.yaml"

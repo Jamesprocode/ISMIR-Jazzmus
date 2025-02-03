@@ -2,7 +2,7 @@ import torch
 
 from torch import nn
 
-from utils.data_preprocessing import IMG_HEIGHT, NUM_CHANNELS
+from jazzmus.dataset.data_preprocessing import IMG_HEIGHT, NUM_CHANNELS
 
 
 class CNN(nn.Module):
