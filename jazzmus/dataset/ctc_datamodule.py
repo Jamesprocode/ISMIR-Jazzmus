@@ -11,7 +11,7 @@ class CTCDataModule(LightningDataModule):
         ds_name: str,
         fold: int,
         batch_size: int = 16,
-        num_workers: int = 20,
+        num_workers: int = 16,
         width_reduction: int = 2,
         split_enc: bool = False,
         harm_proc: bool = False,
@@ -55,6 +55,8 @@ class CTCDataModule(LightningDataModule):
                 split_files=[self.train_split, self.val_split, self.test_split],
                 split="val",
                 width_reduction=self.width_reduction,
+                split_enc=self.split_enc,
+                harm_proc=self.harm_proc,
             )
 
         if stage == "test":
@@ -63,6 +65,8 @@ class CTCDataModule(LightningDataModule):
                 split_files=[self.train_split, self.val_split, self.test_split],
                 split="test",
                 width_reduction=self.width_reduction,
+                split_enc=self.split_enc,
+                harm_proc=self.harm_proc,
             )
 
         if stage == "predict":
