@@ -1,0 +1,4 @@
+other_function.test="HOLA"
+other_function.layers=(10, 40, 60)
+train.batch_size=45
+train.epochs=100
