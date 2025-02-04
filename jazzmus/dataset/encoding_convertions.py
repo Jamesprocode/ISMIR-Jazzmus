@@ -47,8 +47,8 @@ class GtParser:
                     continue
                 root, chord_info = self._extract_chord_root(chord)
 
-                transcript.append(root)
-                transcript.append(chord_info)
+                transcript.append("chord.root." + root)
+                transcript.append("chord.shorthand." + chord_info)
             else:
                 transcript.append(line)
 
