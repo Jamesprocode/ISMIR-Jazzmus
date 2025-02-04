@@ -30,16 +30,18 @@ class CTCTrainedCRNN(LightningModule):
         self.i2w = i2w
         self.ytest_i2w = ytest_i2w if ytest_i2w is not None else i2w
 
+        print("Vocabulary size: ", len(self.w2i))
+
         print("Test vocab: ", test_vocab)
         self.test_vocab = self.load_test_vocab(test_vocab)
 
         self.model = CRNN(
-            output_size=len(self.w2i) + 1, freeze_cnn=freeze, model_loaded=model_loaded
+            output_size=len(self.w2i), freeze_cnn=freeze, model_loaded=model_loaded
         )
 
         self.width_reduction = self.model.cnn.width_reduction
         self.summary(max_image_len)
-        self.compute_ctc_loss = CTCLoss(blank=len(self.w2i), zero_infinity=True)
+        self.compute_ctc_loss = CTCLoss(blank=0, zero_infinity=True)
 
         self.Y = []
         self.Y_hat = []
