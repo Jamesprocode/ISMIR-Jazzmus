@@ -29,8 +29,9 @@ def render_and_clean_lyrics(type, jazz_style_path, style, musescore_exe, input, 
         subprocess.run(cmd)
         # for some unknown reasons, sometimes musescore save the svg not in the output file, but in a file {output.stem}-1.svg
         # if this is the case, rename the output file
+        print("Looking for the output file", output)
         if not output.exists():
-            new_output = Path(output.stem + "-1.svg")
+            new_output = output.parent / Path(output.stem + "-1.svg")
             # rename the output file
             new_output.rename(output)
         # remove lyrics
