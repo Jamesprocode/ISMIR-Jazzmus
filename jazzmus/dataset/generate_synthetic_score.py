@@ -25,7 +25,7 @@ def render_and_clean_lyrics(type, jazz_style_path, style, musescore_exe, input, 
             assert jazz_style_path.exists()
             cmd.append("--style")
             cmd.append(str(jazz_style_path))
-        print("Running command: ", cmd)
+        # print("Running command: ", cmd)
         subprocess.run(cmd)
         # for some unknown reasons, sometimes musescore save the svg not in the output file, but in a file {output.stem}-1.svg
         # if this is the case, rename the output file

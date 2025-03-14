@@ -77,6 +77,6 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     # select only the json files
-    files = Path(args.path).glob("*.json")
+    files = list(Path(args.path).glob("*.json"))
     for f in tqdm(files):
         process_single_json(f, args.override_existing, args.add_synthetic_jazz, args.add_synthetic_classical, args.musescore_jazz_style_path, args.musescore_path)
