@@ -1,0 +1,10 @@
+# path to splits
+CTCDataModule.path_to_splits = <whatever>
+CTCDataset.split_enc = False
+CTCDataset.harm_proc = False
+CTCDataset.vocab_folder = <whatever> # a vocab_folder/vocabs will be created
+GrandStaffDataset.data_path = <whatever>
+GrandStaffDataset.vocab_name = "vocab"
+GrandStaffDataset.batch_size = 1
+GrandStaffDataset.num_workers = 4
+GrandStaffDataset.fold = 0
