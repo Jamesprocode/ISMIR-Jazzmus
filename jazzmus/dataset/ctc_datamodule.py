@@ -4,20 +4,22 @@ from torch.utils.data import DataLoader
 from jazzmus.dataset.ctc_dataset import CTCDataset
 from jazzmus.dataset.data_preprocessing import ctc_batch_preparation
 
+import gin
 
+
+@gin.configurable
 class CTCDataModule(LightningDataModule):
     def __init__(  # noqa: PLR0913
         self,
-        ds_name: str,
         fold: int,
         batch_size: int = 16,
         num_workers: int = 16,
         width_reduction: int = 2,
         split_enc: bool = False,
         harm_proc: bool = False,
+        path_to_splits: str = "data/splits",
     ):
         super().__init__()
-        self.ds_name = ds_name
         self.fold = fold
         self.train_split = []
         self.val_split = []
@@ -27,51 +29,42 @@ class CTCDataModule(LightningDataModule):
         self.width_reduction = width_reduction
         self.split_enc = split_enc
         self.harm_proc = harm_proc
+        self.path_to_splits = path_to_splits
 
-        self.load_splits()
+        self.load_splits(path_to_splits=self.path_to_splits)
 
-    def load_splits(self):
-        with open(f"data/{self.ds_name}/splits/train_{self.fold}.dat") as f:
+    def load_splits(self, path_to_splits: str = "data/splits"):
+        with open(f"{path_to_splits}/train_{self.fold}.dat") as f:
             self.train_split = f.readlines()
 
-        with open(f"data/{self.ds_name}/splits/val_{self.fold}.dat") as f:
+        with open(f"{path_to_splits}/val_{self.fold}.dat") as f:
             self.val_split = f.readlines()
 
-        with open(f"data/{self.ds_name}/splits/test_{self.fold}.dat") as f:
+        with open(f"{path_to_splits}/test_{self.fold}.dat") as f:
             self.test_split = f.readlines()
 
     def setup(self, stage: str):
         if stage == "fit":
             self.train_ds = CTCDataset(
-                ds_name=self.ds_name,
                 split_files=[self.train_split, self.val_split, self.test_split],
                 split="train",
                 width_reduction=self.width_reduction,
-                split_enc=self.split_enc,
-                harm_proc=self.harm_proc,
             )
             self.val_ds = CTCDataset(
-                ds_name=self.ds_name,
                 split_files=[self.train_split, self.val_split, self.test_split],
                 split="val",
                 width_reduction=self.width_reduction,
-                split_enc=self.split_enc,
-                harm_proc=self.harm_proc,
             )
 
         if stage == "test":
             self.test_ds = CTCDataset(
-                ds_name=self.ds_name,
                 split_files=[self.train_split, self.val_split, self.test_split],
                 split="test",
                 width_reduction=self.width_reduction,
-                split_enc=self.split_enc,
-                harm_proc=self.harm_proc,
             )
 
         if stage == "predict":
             self.predict_ds = CTCDataset(
-                ds_name=self.ds_name,
                 split_files=[self.train_split, self.val_split, self.test_split],
                 split="predict",
                 width_reduction=self.width_reduction,

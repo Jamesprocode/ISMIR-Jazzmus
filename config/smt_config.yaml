@@ -1,0 +1,6 @@
+model_type: "smt"
+epochs: 400
+patience: 5
+batch_size: 1
+split_enc: false # symbol pos if true
+harm_proc: false # root chord if true

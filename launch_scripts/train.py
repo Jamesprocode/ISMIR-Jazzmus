@@ -1,60 +1,89 @@
 import gc
 
+import gin
+
 import fire
 import torch
 
 from lightning.pytorch import Trainer
 from lightning.pytorch.callbacks import EarlyStopping, ModelCheckpoint
-from lightning.pytorch.loggers import CSVLogger, WandbLogger
+from lightning.pytorch.loggers import WandbLogger
 
 from jazzmus.model.crnn.model import CTCTrainedCRNN
 from jazzmus.dataset.ctc_datamodule import CTCDataModule
-from jazzmus.utils.file_utils import check_folders, load_config
+from jazzmus.dataset.smt_dataset import GrandStaffDataset
+from jazzmus.smt_trainer import SMT_Trainer
+from jazzmus.utils.file_utils import check_folders
 from lightning.pytorch import seed_everything
 
 
 def train(
-    ds_name: str,
-    fold: int = 0,
     debug: bool = False,
+    fold: int = 0,
+    model_type: str = None,
+    epochs: int = 300,
+    patience: int = 10,
+    batch_size: int = 16,
     config: str = None,
 ):
     gc.collect()
     torch.cuda.empty_cache()
     seed_everything(seed=42, workers=True)
+
+    # setup all the configurations
+    gin.parse_config_file(config)
+
     check_folders()
 
-    model_type, epochs, patience, batch_size, logger, split_enc, harm_proc = (
-        load_config(config).values()
-    )
-
     print("EXPERIMENT TRAINING")
-    print(f"\tDataset: {ds_name}")
+    # print(f"\tDataset: {ds_name}")
     print(f"\tFold: {fold}")
     print(f"\tModel type: {model_type}")
     print(f"\tEpochs: {epochs}")
     print(f"\tPatience: {patience}")
     print(f"\tBatch size: {batch_size}")
-    print(f"\tLogger: {logger}")
-    print(f"\tSplit encoding: {split_enc}")
-    print(f"\tHarmony processing: {harm_proc}")
+    # print(f"\tSplit encoding: {split_enc}")
+    # print(f"\tHarmony processing: {harm_proc}")
 
-    datamodule = CTCDataModule(
-        ds_name, fold, batch_size, split_enc=split_enc, harm_proc=harm_proc
-    )
-    datamodule.setup(stage="fit")
-    w2i, i2w = datamodule.get_w2i_and_i2w()
+    if model_type == "crnn":
+        datamodule = CTCDataModule(fold, batch_size)
+        datamodule.setup(stage="fit")
+        w2i, i2w = datamodule.get_w2i_and_i2w()
 
-    model = CTCTrainedCRNN(
-        w2i=w2i, i2w=i2w, max_image_len=datamodule.get_max_img_len(), fold=fold
-    )
+        model = CTCTrainedCRNN(
+            w2i=w2i, i2w=i2w, max_image_len=datamodule.get_max_img_len(), fold=fold
+        )
 
-    datamodule.width_reduction = model.width_reduction
+        datamodule.width_reduction = model.width_reduction
+
+    elif model_type == "smt":
+        # datamodule
+        datamodule = GrandStaffDataset(config=config.data, fold=fold)
+        max_height, max_width = datamodule.train_set.get_max_hw()
+        max_len = datamodule.train_set.get_max_seqlen()
+
+        model = SMT_Trainer(
+            maxh=int(max_height),
+            maxw=int(max_width),
+            maxlen=int(max_len),
+            out_categories=len(datamodule.train_set.w2i),
+            padding_token=datamodule.train_set.w2i["<pad>"],
+            in_channels=1,
+            w2i=datamodule.train_set.w2i,
+            i2w=datamodule.train_set.i2w,
+            d_model=256,
+            dim_ff=256,
+            num_dec_layers=8,
+            fold=fold,
+        )
+
+    else:
+        raise ValueError(f"Model type {model_type} not recognized")
 
     callbacks = [
         ModelCheckpoint(
             dirpath=f"weights/{model_type}",
-            filename=ds_name + f"_{fold}",
+            filename=f"{model_type}_{fold}",
             monitor="val_ser",
             verbose=True,
             save_top_k=1,
@@ -67,7 +96,7 @@ def train(
         ),
         EarlyStopping(
             monitor="val_ser",
-            min_delta=0.1,
+            min_delta=0.01,
             patience=patience,
             verbose=True,
             mode="min",
@@ -78,19 +107,13 @@ def train(
         ),
     ]
 
-    # Wandb may crash in some servers
-
-    my_logger = None
-    if logger:
-        my_logger = WandbLogger(
-            project="jazzmus",
-            name=f"{ds_name}_{fold}",
-            log_model=True,
-            group=f"{model_type}",
-            save_dir="logs",
-        )
-    else:
-        my_logger = CSVLogger("logs", name=f"{ds_name}_{fold}")
+    my_logger = WandbLogger(
+        project="jazzmus",
+        name=f"{model_type}_{fold}",
+        log_model=True,
+        group=f"{model_type}",
+        save_dir="logs",
+    )
 
     trainer = Trainer(
         logger=my_logger,
@@ -107,7 +130,10 @@ def train(
     trainer.fit(model=model, datamodule=datamodule)
 
     # End of training, test partition
-    model = CTCTrainedCRNN.load_from_checkpoint(callbacks[0].best_model_path)
+    if model_type == "crnn":
+        model = CTCTrainedCRNN.load_from_checkpoint(callbacks[0].best_model_path)
+    elif model_type == "smt":
+        model = SMT_Trainer.load_from_checkpoint(callbacks[0].best_model_path)
 
     model.freeze()
     trainer.test(model, datamodule)

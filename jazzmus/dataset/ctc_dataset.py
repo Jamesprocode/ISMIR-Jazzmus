@@ -1,5 +1,6 @@
 import json
 import os
+import gin
 
 import cv2
 import torch
@@ -11,25 +12,26 @@ from jazzmus.dataset.encoding_convertions import GtParser
 from jazzmus.utils.file_utils import list_files_recursively
 
 
+@gin.configurable
 class CTCDataset(Dataset):
     def __init__(
         self,
-        ds_name: str,
         split: str,
         split_files,
         width_reduction: int = 2,
         sample_files=None,
         split_enc: bool = False,
         harm_proc: bool = False,
+        vocab_folder: str = "",
     ):
         super().__init__()
-        self.ds_name = ds_name
         self.split = split
         self.split_files = split_files
         self.width_reduction = width_reduction
         self.sample_files = sample_files
         self.split_enc = split_enc
         self.harm_proc = harm_proc
+        self.vocab_folder = vocab_folder
         self.init(vocab_name="w2i")
 
     def init(self, vocab_name: str = "w2i"):
@@ -51,7 +53,7 @@ class CTCDataset(Dataset):
         print(f"Example of X: {self.X[0]} | Y: {self.Y[0]}")
 
         # Get vocab
-        vocab_folder = os.path.join("data", self.ds_name, "vocabs")
+        vocab_folder = os.path.join(self.vocab_folder, "vocabs")
         os.makedirs(vocab_folder, exist_ok=True)
         vocab_name = f"{vocab_name}.json"
         self.w2i_path = os.path.join(vocab_folder, vocab_name)
