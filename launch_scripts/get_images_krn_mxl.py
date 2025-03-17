@@ -3,6 +3,7 @@ import json, requests
 import argparse
 from tqdm import tqdm
 from jazzmus.dataset.generate_synthetic_score import render_and_clean_lyrics
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 
 def process_single_json(f, override_existing=False, add_synthetic_jazz=False, add_synthetic_classical=False, musescore_jazz_style_path=None, musescore_path=None):
@@ -78,5 +79,14 @@ if __name__ == "__main__":
 
     # select only the json files
     files = list(Path(args.path).glob("*.json"))
-    for f in tqdm(files):
-        process_single_json(f, args.override_existing, args.add_synthetic_jazz, args.add_synthetic_classical, args.musescore_jazz_style_path, args.musescore_path)
+    # for f in tqdm(files):
+    #     process_single_json(f, args.override_existing, args.add_synthetic_jazz, args.add_synthetic_classical, args.musescore_jazz_style_path, args.musescore_path)
+    with ThreadPoolExecutor(max_workers=8) as executor:
+        futures = [executor.submit(process_single_json, f, args.override_existing,
+                                   args.add_synthetic_jazz, args.add_synthetic_classical,
+                                   args.musescore_jazz_style_path, args.musescore_path)
+                   for f in files]
+
+        # Using tqdm to monitor progress as futures complete
+        for _ in tqdm(as_completed(futures), total=len(futures), desc="Processing files"):
+            pass
