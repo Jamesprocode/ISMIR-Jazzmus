@@ -1,4 +1,4 @@
-from utils import levenshtein
+from jazzmus.metrics import levenshtein
 
 
 def parse_krn_content(krn, ler_parsing=False, cer_parsing=False):

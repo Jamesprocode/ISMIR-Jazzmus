@@ -6,16 +6,31 @@ class GtParser:
 
     def convert(self, src_file: str):
         # read file and get lines
+        # print(f"DEBUG: src_file == {src_file}")
+        tokens = []
         with open(src_file) as f:
             lines = f.read().splitlines()
 
-            if self.split_enc:
-                lines = self._split_encode(lines)
+            # if self.split_enc:
+            #     lines = self._split_encode(lines)
 
-            if self.process_harm:
-                lines = self._harm_split_encode(lines)
+            # if self.process_harm:
+            #     lines = self._harm_split_encode(lines)
+            for l in lines:
+                if "!!linebreak" in l:
+                    continue
 
-        return lines
+                elements = l.split("\t")
+
+                for e in elements:
+                    tokens.append(e)
+                    tokens.append("<t>")
+
+                # if the last one is a tab, remove it
+                if tokens[-1] == "<t>":
+                    tokens.pop()
+                tokens.append("<n>")
+        return tokens
 
     def _split_encode(self, lines):
         transcript = []

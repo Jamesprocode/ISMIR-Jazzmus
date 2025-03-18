@@ -34,13 +34,13 @@ class CTCDataModule(LightningDataModule):
         self.load_splits(path_to_splits=self.path_to_splits)
 
     def load_splits(self, path_to_splits: str = "data/splits"):
-        with open(f"{path_to_splits}/train_{self.fold}.dat") as f:
+        with open(f"{path_to_splits}/train_{self.fold}.txt") as f:
             self.train_split = f.readlines()
 
-        with open(f"{path_to_splits}/val_{self.fold}.dat") as f:
+        with open(f"{path_to_splits}/val_{self.fold}.txt") as f:
             self.val_split = f.readlines()
 
-        with open(f"{path_to_splits}/test_{self.fold}.dat") as f:
+        with open(f"{path_to_splits}/test_{self.fold}.txt") as f:
             self.test_split = f.readlines()
 
     def setup(self, stage: str):

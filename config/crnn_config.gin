@@ -1,10 +1,11 @@
 # path to splits
-CTCDataModule.path_to_splits = <whatever>
+CTCDataModule.path_to_splits = "data/jazzmus_dataset_regions/splits"
 CTCDataset.split_enc = False
 CTCDataset.harm_proc = False
-CTCDataset.vocab_folder = <whatever> # a vocab_folder/vocabs will be created
-GrandStaffDataset.data_path = <whatever>
+CTCDataset.vocab_folder = "data/jazzmus_dataset_regions/vocab" # a vocab_folder/vocabs will be created
+GrandStaffDataset.data_path = "data/jazzmus_dataset_regions/splits"
 GrandStaffDataset.vocab_name = "vocab"
 GrandStaffDataset.batch_size = 1
 GrandStaffDataset.num_workers = 4
 GrandStaffDataset.fold = 0
+make_vocabulary.pathToSave = "data/jazzmus_dataset_regions/vocab"

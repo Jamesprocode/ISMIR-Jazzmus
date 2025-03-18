@@ -12,6 +12,11 @@ from .transforms_custom import *
 
 import numpy as np
 
+import os
+import random
+import numpy as np
+from PIL import Image
+
 
 # import joblib
 # MEMORY = joblib.memory.Memory("./joblib_cache", mmap_mode="r", verbose=0)
@@ -85,27 +90,27 @@ def shrink_image(image):
 
 def get_image_from_file(path: str, split: str) -> np.ndarray:
     if os.path.exists(path):
-        x = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
-        # Resize height to IMG_HEIGHT
-        # resize mantains aspect ratio
-        width = int(float(IMG_HEIGHT * x.shape[1]) / x.shape[0])
-        x = cv2.resize(x, (width, IMG_HEIGHT))
+        # Open image using Pillow and convert to grayscale
+        image = Image.open(path).convert("L")
 
-        # apply random filter
+        # Resize while maintaining aspect ratio
+        width = int((IMG_HEIGHT * image.width) / image.height)
+        image = image.resize((width, IMG_HEIGHT))
+
+        # Convert to NumPy array
+        x = np.array(image, dtype=np.float32)
+
+        # Apply random filter
         if random.random() > FILTER_APPLY_PROBABILITY:
             x = apply_random_filter(x)
-        else:
-            # x = shrink_image(x)
-            pass
 
-        # Normalize
-        x = x.astype(np.float32)
-        x = x / 255.0
+        # Normalize to range [0,1]
+        x = np.array(x, dtype=np.float32)
+        x /= 255.0
     else:
         with open("missing_files.txt", "a") as f:
             f.write(f"{path}\n")
-        # print(f"File {path} not found.")
-        x = np.zeros((IMG_HEIGHT, 1))
+        x = np.zeros((IMG_HEIGHT, 1), dtype=np.float32)
 
     return x
 

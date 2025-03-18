@@ -16,6 +16,8 @@ from jazzmus.smt_trainer import SMT_Trainer
 from jazzmus.utils.file_utils import check_folders
 from lightning.pytorch import seed_everything
 
+PYTORCH_ENABLE_MPS_FALLBACK = 1
+
 
 def train(
     debug: bool = False,
@@ -58,7 +60,7 @@ def train(
 
     elif model_type == "smt":
         # datamodule
-        datamodule = GrandStaffDataset(config=config.data, fold=fold)
+        datamodule = GrandStaffDataset(fold=fold)
         max_height, max_width = datamodule.train_set.get_max_hw()
         max_len = datamodule.train_set.get_max_seqlen()
 

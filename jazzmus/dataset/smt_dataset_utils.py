@@ -47,6 +47,10 @@ def check_and_retrieveVocabulary(YSequences, pathOfSequences, nameOfVoc):
     return w2i, i2w
 
 
+import gin
+
+
+@gin.configurable
 def make_vocabulary(YSequences, pathToSave, nameOfVoc):
     vocabulary = set()
     for samples in YSequences:

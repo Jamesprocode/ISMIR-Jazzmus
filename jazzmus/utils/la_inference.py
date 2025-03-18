@@ -3,6 +3,8 @@ from typing import List
 import os
 import cv2
 
+from PIL import Image
+
 
 def run_la_inference(files: List[str], save_path: str):
     os.makedirs(save_path, exist_ok=True)
@@ -16,7 +18,7 @@ def run_la_inference(files: List[str], save_path: str):
     # Process each image result
     for img_idx, result in enumerate(results):
         image_path = files[img_idx]
-        image = cv2.imread(image_path)  # Load image using OpenCV
+        image = Image.open(image_path)  # Load image using Pillow
 
         # Ensure image is loaded
         if image is None:
@@ -53,7 +55,9 @@ def run_la_inference(files: List[str], save_path: str):
 
             # Save cropped staff image with ordered index
             staff_filename = f"{save_path}/{img_idx}_staff_{sorted_idx}.jpg"
-            cv2.imwrite(staff_filename, cropped_staff)
+            # cv2.imwrite(staff_filename, cropped_staff)
+            # write Pillow
+            cropped_staff.save(staff_filename)
             print(f"Saved: {staff_filename}")
 
         # Optionally save the full result image

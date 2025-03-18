@@ -2,7 +2,9 @@ import json
 import os
 import gin
 
+from PIL import Image
 import cv2
+import numpy as np
 import torch
 
 from torch.utils.data import Dataset
@@ -93,7 +95,8 @@ class CTCDataset(Dataset):
 
         elif self.split == "predict":
             for i in self.sample_files:
-                image = cv2.imread(i, cv2.IMREAD_GRAYSCALE)
+                image = Image.open(i).convert("L")  # Open and convert to grayscale
+                image = np.array(image)
                 h, w = image.shape
                 width_reduction = 2**1  # number of poolings in second dimension
                 height_reduction = 2**4  # number of poolings in first dimension
@@ -114,7 +117,7 @@ class CTCDataset(Dataset):
 
         for f in partition_file:
             clean_f = f.strip()
-            image_path, transcription_path = clean_f.split(" ")
+            transcription_path, image_path = clean_f.split(" ")
 
             # check if the files exist
             if not os.path.isfile(image_path) or not os.path.isfile(transcription_path):
@@ -122,7 +125,8 @@ class CTCDataset(Dataset):
                 continue
 
             # check if after encoder the size is bigger than the sequence length
-            image = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)
+            image = Image.open(image_path).convert("L")  # Open and convert to grayscale
+            image = np.array(image)
             h, w = image.shape
             width_reduction = 2**1  # number of poolings in second dimension
             height_reduction = 2**4  # number of poolings in first dimension
@@ -165,7 +169,7 @@ class CTCDataset(Dataset):
             for line in partition_file:
                 filename = line.strip()
                 # filename --> img_path gt_path
-                transcript = self.gt_parser.convert(src_file=filename.split(" ")[1])
+                transcript = self.gt_parser.convert(src_file=filename.split(" ")[0])
                 vocab.update(transcript)
         vocab = sorted(vocab)
 
@@ -173,6 +177,7 @@ class CTCDataset(Dataset):
         i2w = {}
         w2i = {"<blank>": 0}
         i2w = {0: "<blank>"}
+
         for i, w in enumerate(vocab, start=1):
             w2i[w] = i
             i2w[i] = w
@@ -190,16 +195,20 @@ class CTCDataset(Dataset):
         # Recursively list files in the directory and its subdirectories
         # for root, dirs, files in os.walk(f"data/gt/{self.ds_name}"):
 
-        files = list_files_recursively(f"data/{self.ds_name}/gt/")
+        # files = list_files_recursively(f"data/{self.ds_name}/gt/")
 
-        for t in files:
-            if t.endswith(".txt") and not t.startswith("."):
-                transcript = self.gt_parser.convert(src_file=t)
-                max_seq_len = max(max_seq_len, len(transcript))
+        # get files from the split indices
+        files = self.split_files[0] + self.split_files[1] + self.split_files[2]
 
-                image_path = t.replace(".txt", ".jpg").replace("gt", "jpg")
-                image = preprocess_image(path=image_path, split=self.split)
-                max_img_len = max(max_img_len, image.shape[2])
+        for f in files:
+            clean_f = f.strip()
+            transcription_path, image_path = clean_f.split(" ")
+
+            transcript = self.gt_parser.convert(src_file=transcription_path)
+            max_seq_len = max(max_seq_len, len(transcript))
+
+            image = preprocess_image(path=image_path, split=self.split)
+            max_img_len = max(max_img_len, image.shape[2])
 
         self.max_seq_len = max_seq_len
         self.max_img_len = max_img_len

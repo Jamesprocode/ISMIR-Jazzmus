@@ -1,1 +1,2 @@
-python3 launch_scripts/train.py -fold 0 -config "config/crnn_config.gin"
+python3 launch_scripts/train.py -fold 0 -config "config/crnn_config.gin" -model_type "crnn" -batch_size 8
+python3 launch_scripts/train.py -fold 0 -config "config/crnn_config.gin" -model_type "smt" -batch_size 2

@@ -1,16 +1,19 @@
 import re
 
-import cv2
+from math import ceil
+
+import gin
 import numpy as np
 import torch
+
 from lightning import LightningDataModule
+from PIL import Image
 from rich import progress
 from torch.utils.data import Dataset
 from torchvision import transforms
 
-from data_preprocessing import augment, convert_img_to_tensor
-from ExperimentConfig import ExperimentConfig
-from smt_dataset_utils import (
+from jazzmus.dataset.data_preprocessing import augment, convert_img_to_tensor
+from jazzmus.dataset.smt_dataset_utils import (
     check_and_retrieveVocabulary,
     load_kern,
 )
@@ -19,16 +22,15 @@ from smt_dataset_utils import (
 def load_set(dataset, fold, split="train", reduce_ratio=1.0, fixed_size=None):
     x = []
     y = []
-    # TODO
-    # loaded_dataset = datasets.load_dataset(dataset, split=split)
-    # read from a given split.txt where each line is the path to kern and the path to img
-    with open(f"Data/splits/{split}_{fold}.txt", "r") as f:
+
+    # Read from the given split file
+
+    with open(f"{dataset}/{split}_{fold}.txt") as f:
         lines = f.readlines()
-        # each line is kern_path img_path
         img_samples = [line.split(" ")[1].strip() for line in lines]
         kern_samples = [line.split(" ")[0].strip() for line in lines]
 
-    print(f"Number of regions in split:{split} SMB dataset: {len(img_samples)}")
+    print(f"Number of regions in split: {split} SMB dataset: {len(img_samples)}")
 
     assert len(img_samples) == len(kern_samples), (
         "Number of images and kern files do not match"
@@ -37,22 +39,25 @@ def load_set(dataset, fold, split="train", reduce_ratio=1.0, fixed_size=None):
     for kern_sample, img_sample in progress.track(zip(kern_samples, img_samples)):
         krn_content = load_kern(kern_sample)
 
-        # read image from path
-        img_raw = cv2.imread(img_sample, cv2.IMREAD_GRAYSCALE)
-        img = np.array(img_raw)
-        if fixed_size is not None:
-            width = fixed_size[1]
-            height = fixed_size[0]
-        elif img.shape[1] > 3056:
-            width = int(np.ceil(3056 * reduce_ratio))
-            height = int(np.ceil(max(img.shape[0], 256) * reduce_ratio))
-        else:
-            width = int(np.ceil(img.shape[1] * reduce_ratio))
-            height = int(np.ceil(max(img.shape[0], 256) * reduce_ratio))
+        # Read image from path using PIL
+        img_raw = Image.open(img_sample).convert("L")  # Convert to grayscale
 
-        img = cv2.resize(img, (width, height))
-        y.append(krn_content)  # list of lines
-        # y.append([content + "\n" for content in krn_content.split("\n")])
+        if fixed_size is not None:
+            width, height = fixed_size[1], fixed_size[0]
+        elif img_raw.width > 3056:
+            width = int(ceil(3056 * reduce_ratio))
+            height = int(ceil(max(img_raw.height, 256) * reduce_ratio))
+        else:
+            width = int(ceil(img_raw.width * reduce_ratio))
+            height = int(ceil(max(img_raw.height, 256) * reduce_ratio))
+
+        # Resize the image using PIL
+        img_resized = img_raw.resize((width, height), Image.LANCZOS)
+
+        # Convert to NumPy array
+        img = np.array(img_resized, dtype=np.float32)
+
+        y.append(krn_content)  # List of lines from kern file
         x.append(img)
 
     return x, y
@@ -189,6 +194,7 @@ class GrandStaffSingleSystem(OMRIMG2SEQDataset):
     def preprocess_gt(self, Y):
         for idx, krn in enumerate(Y):
             # krnlines = []
+
             krn = "".join(krn)
             krn = krn.replace(" ", " <s> ")
             krn = krn.replace("·", "")
@@ -199,17 +205,21 @@ class GrandStaffSingleSystem(OMRIMG2SEQDataset):
             Y[idx] = self.erase_numbers_in_tokens_with_equal(
                 ["<bos>"] + krn + ["<eos>"]
             )
-
+            # TODO, maybe do it at token lvl
+            # Y[idx] = [token for token in Y[idx] if token != ""]
         return Y
 
 
+@gin.configurable
 class GrandStaffDataset(LightningDataModule):
-    def __init__(self, config: ExperimentConfig, fold) -> None:
+    def __init__(
+        self, data_path="", vocab_name="", batch_size=1, num_workers=4, fold=0
+    ) -> None:
         super().__init__()
-        self.data_path = config.data_path
-        self.vocab_name = config.vocab_name
-        self.batch_size = config.batch_size
-        self.num_workers = config.num_workers
+        self.data_path = data_path
+        self.vocab_name = vocab_name
+        self.batch_size = batch_size
+        self.num_workers = num_workers
         self.fold = fold
         self.train_set = GrandStaffSingleSystem(
             data_path=self.data_path,
@@ -226,7 +236,7 @@ class GrandStaffDataset(LightningDataModule):
 
         w2i, i2w = check_and_retrieveVocabulary(
             [self.train_set.get_gt(), self.val_set.get_gt(), self.test_set.get_gt()],
-            f"vocab",
+            "vocab",
             f"{self.vocab_name}",
         )
 
