@@ -9,3 +9,6 @@ GrandStaffDataset.batch_size = 1
 GrandStaffDataset.num_workers = 4
 GrandStaffDataset.fold = 0
 make_vocabulary.pathToSave = "data/jazzmus_dataset_regions/vocab"
+
+# ENCODING
+GtParser.character_lvl = False

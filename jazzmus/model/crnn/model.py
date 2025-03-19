@@ -103,6 +103,8 @@ class CTCTrainedCRNN(LightningModule):
         y_hat = self.ctc_greedy_decoder(y_hat, self.i2w)
 
         y = [self.ytest_i2w[i.item()] for i in y[0]]
+
+
         self.Y.append(y)
         self.Y_hat.append(y_hat)
 
@@ -155,7 +157,7 @@ class CTCTrainedCRNN(LightningModule):
     def on_test_epoch_end(self):
         print("on test epoch end")
         return self.on_validation_epoch_end(
-            name="test", print_random_samples=False, print_all_samples=True
+            name="test", print_random_samples=True, print_all_samples=True
         )
 
     def on_predict_epoch_end(self):

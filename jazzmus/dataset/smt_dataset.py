@@ -196,10 +196,13 @@ class GrandStaffSingleSystem(OMRIMG2SEQDataset):
             # krnlines = []
 
             krn = "".join(krn)
+            krn = krn.replace('*I"Voice	*', "")
             krn = krn.replace(" ", " <s> ")
             krn = krn.replace("·", "")
             krn = krn.replace("\t", " <t> ")
             krn = krn.replace("\n", " <b> ")
+            krn = krn.replace("!!linebreak:original", "")
+            krn = krn.replace("!!pagebreak", "")
             krn = krn.split(" ")
 
             Y[idx] = self.erase_numbers_in_tokens_with_equal(

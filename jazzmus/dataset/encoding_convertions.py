@@ -1,15 +1,25 @@
 # Description: This script contains the class GtParser which is used to convert the ground truth
+import gin
+@gin.configurable
 class GtParser:
-    def __init__(self, split_enc=False, process_harm=False) -> None:
+    def __init__(self, split_enc=False, process_harm=False, character_lvl=False) -> None:
         self.split_enc = split_enc
         self.process_harm = process_harm
+        self.character_lvl = character_lvl
+
+    def _get_character_lvl(self, lines):
+        raise NotImplementedError
 
     def convert(self, src_file: str):
         # read file and get lines
         # print(f"DEBUG: src_file == {src_file}")
+        reserved_lines = ["!!linebreak", "!!pagebreak"]
         tokens = []
         with open(src_file) as f:
             lines = f.read().splitlines()
+
+            if self.character_lvl:
+                return self._get_character_lvl(lines)
 
             # if self.split_enc:
             #     lines = self._split_encode(lines)
@@ -17,7 +27,7 @@ class GtParser:
             # if self.process_harm:
             #     lines = self._harm_split_encode(lines)
             for l in lines:
-                if "!!linebreak" in l:
+                if l in reserved_lines: 
                     continue
 
                 elements = l.split("\t")
