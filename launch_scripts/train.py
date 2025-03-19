@@ -86,7 +86,7 @@ def train(
         ModelCheckpoint(
             dirpath=f"weights/{model_type}",
             filename=f"{model_type}_{fold}",
-            monitor="val_ser" if model_type == "crnn" else "val_SER",
+            monitor="val_ser",
             verbose=True,
             save_top_k=1,
             save_last=False,
@@ -97,7 +97,7 @@ def train(
             save_on_train_epoch_end=False,
         ),
         EarlyStopping(
-            monitor= "val_ser" if model_type == "crnn" else "val_SER" ,
+            monitor= "val_ser",
             min_delta=0.01,
             patience=patience,
             verbose=True,
@@ -126,6 +126,7 @@ def train(
         benchmark=False,
         precision="16-mixed",
         accelerator="auto",
+        accumulate_grad_batches=8,
         fast_dev_run=debug,
     )
 

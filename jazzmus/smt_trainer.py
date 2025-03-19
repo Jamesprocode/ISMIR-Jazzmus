@@ -119,19 +119,19 @@ class SMT_Trainer(L.LightningModule):
         print(f"\n[GT] - {gttoshow}")
 
         self.log(
-            f"{metric_name}_CER",
+            f"{metric_name}_cer",
             100 if cer > 100 else cer,
             on_epoch=True,
             prog_bar=True,
         )
         self.log(
-            f"{metric_name}_SER",
+            f"{metric_name}_ser",
             100 if ser > 100 else ser,
             on_epoch=True,
             prog_bar=True,
         )
         self.log(
-            f"{metric_name}_LER",
+            f"{metric_name}_ler",
             100 if ler > 100 else ler,
             on_epoch=True,
             prog_bar=True,
