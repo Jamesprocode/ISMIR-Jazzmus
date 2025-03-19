@@ -10,5 +10,7 @@ GrandStaffDataset.num_workers = 4
 GrandStaffDataset.fold = 0
 make_vocabulary.pathToSave = "data/jazzmus_dataset_regions/vocab"
 
+
 # ENCODING
-GtParser.character_lvl = False
+GtParser.character_lvl = False # this is for crnn
+GrandStaffSingleSystem.char_lvl = False

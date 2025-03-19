@@ -12,12 +12,13 @@ from rich import progress
 from torch.utils.data import Dataset
 from torchvision import transforms
 
+import cv2
+
 from jazzmus.dataset.data_preprocessing import augment, convert_img_to_tensor
 from jazzmus.dataset.smt_dataset_utils import (
     check_and_retrieveVocabulary,
     load_kern,
 )
-
 
 def load_set(dataset, fold, split="train", reduce_ratio=1.0, fixed_size=None):
     x = []
@@ -39,25 +40,22 @@ def load_set(dataset, fold, split="train", reduce_ratio=1.0, fixed_size=None):
     for kern_sample, img_sample in progress.track(zip(kern_samples, img_samples)):
         krn_content = load_kern(kern_sample)
 
-        # Read image from path using PIL
-        img_raw = Image.open(img_sample).convert("L")  # Convert to grayscale
-
+        # read image from path
+        img_raw = cv2.imread(img_sample, cv2.IMREAD_GRAYSCALE)
+        img = np.array(img_raw)
         if fixed_size is not None:
-            width, height = fixed_size[1], fixed_size[0]
-        elif img_raw.width > 3056:
-            width = int(ceil(3056 * reduce_ratio))
-            height = int(ceil(max(img_raw.height, 256) * reduce_ratio))
+            width = fixed_size[1]
+            height = fixed_size[0]
+        elif img.shape[1] > 3056:
+            width = int(np.ceil(3056 * reduce_ratio))
+            height = int(np.ceil(max(img.shape[0], 256) * reduce_ratio))
         else:
-            width = int(ceil(img_raw.width * reduce_ratio))
-            height = int(ceil(max(img_raw.height, 256) * reduce_ratio))
+            width = int(np.ceil(img.shape[1] * reduce_ratio))
+            height = int(np.ceil(max(img.shape[0], 256) * reduce_ratio))
 
-        # Resize the image using PIL
-        img_resized = img_raw.resize((width, height), Image.LANCZOS)
-
-        # Convert to NumPy array
-        img = np.array(img_resized, dtype=np.float32)
-
-        y.append(krn_content)  # List of lines from kern file
+        img = cv2.resize(img, (width, height))
+        y.append(krn_content) # list of lines
+        # y.append([content + "\n" for content in krn_content.split("\n")])
         x.append(img)
 
     return x, y
@@ -156,12 +154,13 @@ class OMRIMG2SEQDataset(Dataset):
     def get_i2w(self):
         return self.i2w
 
-
+@gin.configurable
 class GrandStaffSingleSystem(OMRIMG2SEQDataset):
-    def __init__(self, data_path, split, fold, augment=False) -> None:
+    def __init__(self, data_path, split, fold, augment=False, char_lvl=False) -> None:
         self.augment = augment
         self.teacher_forcing_error_rate = 0.2
         self.fold = fold
+        self.char_lvl = char_lvl
         self.x, self.y = load_set(data_path, split=split, fold=self.fold)
         self.y = self.preprocess_gt(self.y)
         self.tensorTransform = transforms.ToTensor()
@@ -195,21 +194,24 @@ class GrandStaffSingleSystem(OMRIMG2SEQDataset):
         for idx, krn in enumerate(Y):
             # krnlines = []
 
+            # KERN TOKENIZATION
             krn = "".join(krn)
-            krn = krn.replace('*I"Voice	*', "")
+            krn = krn.replace('*I"Voice	*\n', "")
+            krn = krn.replace("!!linebreak:original\n", "")
+            krn = krn.replace("!!pagebreak:original\n", "")
+            # !LO:TX:a:t=	!
             krn = krn.replace(" ", " <s> ")
             krn = krn.replace("·", "")
             krn = krn.replace("\t", " <t> ")
             krn = krn.replace("\n", " <b> ")
-            krn = krn.replace("!!linebreak:original", "")
-            krn = krn.replace("!!pagebreak", "")
             krn = krn.split(" ")
 
             Y[idx] = self.erase_numbers_in_tokens_with_equal(
                 ["<bos>"] + krn + ["<eos>"]
             )
-            # TODO, maybe do it at token lvl
-            # Y[idx] = [token for token in Y[idx] if token != ""]
+            # TODO
+            if self.char_lvl:
+                raise NotImplementedError("Char level not implemented yet")
         return Y
 
 

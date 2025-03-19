@@ -97,7 +97,7 @@ def train(
             save_on_train_epoch_end=False,
         ),
         EarlyStopping(
-            monitor="val_ser",
+            monitor= "val_ser" if model_type == "crnn" else "val_SER" ,
             min_delta=0.01,
             patience=patience,
             verbose=True,
