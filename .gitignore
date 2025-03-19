@@ -1,4 +1,5 @@
 data/*
+vocab/*
 
 # weights folder
 weights/*
