@@ -86,7 +86,7 @@ def train(
         ModelCheckpoint(
             dirpath=f"weights/{model_type}",
             filename=f"{model_type}_{fold}",
-            monitor="val_ser",
+            monitor="val_ser" if model_type == "crnn" else "val_SER",
             verbose=True,
             save_top_k=1,
             save_last=False,
