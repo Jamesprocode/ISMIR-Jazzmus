@@ -15,7 +15,14 @@ from jazzmus.dataset.smt_dataset_utils import check_and_retrieveVocabulary, load
 from jazzmus.dataset.tokenizer import process_text
 
 
-def load_set(dataset, fold, split="train", reduce_ratio=1.0, fixed_size=None):
+def load_set(
+    dataset,
+    fold,
+    split="train",
+    reduce_ratio=1.0,
+    fixed_size=None,
+    fixed_img_height=256,
+):
     x = []
     y = []
 
@@ -41,6 +48,10 @@ def load_set(dataset, fold, split="train", reduce_ratio=1.0, fixed_size=None):
         if fixed_size is not None:
             width = fixed_size[1]
             height = fixed_size[0]
+        elif fixed_img_height is not None:
+            # keep the aspect ratio
+            width = int(np.ceil(img.shape[1] * fixed_img_height / img.shape[0]))
+            height = fixed_img_height
         elif img.shape[1] > 3056:
             width = int(np.ceil(3056 * reduce_ratio))
             height = int(np.ceil(max(img.shape[0], 256) * reduce_ratio))
@@ -60,6 +71,10 @@ def batch_preparation_img2seq(data):
     images = [sample[0] for sample in data]
     dec_in = [sample[1] for sample in data]
     gt = [sample[2] for sample in data]
+
+    print("Original shapes")
+    for i in images:
+        print(i.shape)
 
     max_image_width = max(128, max([img.shape[2] for img in images]))
     max_image_height = max(256, max([img.shape[1] for img in images]))
@@ -152,12 +167,26 @@ class OMRIMG2SEQDataset(Dataset):
 
 @gin.configurable
 class GrandStaffSingleSystem(OMRIMG2SEQDataset):
-    def __init__(self, data_path, split, fold, augment=False, char_lvl=False) -> None:
+    def __init__(
+        self,
+        data_path,
+        split,
+        fold,
+        augment=False,
+        char_lvl=False,
+        fixed_img_height=256,
+    ) -> None:
         self.augment = augment
         self.teacher_forcing_error_rate = 0.2
         self.fold = fold
         self.char_lvl = char_lvl
-        self.x, self.y = load_set(data_path, split=split, fold=self.fold)
+        self.fixed_img_height = fixed_img_height
+        self.x, self.y = load_set(
+            data_path,
+            split=split,
+            fold=self.fold,
+            fixed_img_height=self.fixed_img_height,
+        )
         self.y = self.preprocess_gt(self.y)
         self.tensorTransform = transforms.ToTensor()
         self.num_sys_gen = 1
