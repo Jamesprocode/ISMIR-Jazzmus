@@ -1,7 +1,7 @@
 def process_text(lines, char_lvl: bool = False):
     """Reads and processes the input file with text preprocessing and optional character-level tokenization."""
     
-    reserved_lines = {"!!linebreak", "!!pagebreak", '*I'}
+    reserved_lines = {"!!linebreak", "!!pagebreak", '*I', "*F:", "!LO"}
     tokens = []
 
     for line in lines:
@@ -28,3 +28,8 @@ def process_text(lines, char_lvl: bool = False):
 
 
     return tokens
+
+
+def untokenize(tokens):
+    """Untokenizes a list of tokens into a string."""
+    return "".join(tokens).replace("<t>", "\t").replace("<n>", "\n").replace("<s>", " ")

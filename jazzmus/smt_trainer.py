@@ -7,6 +7,7 @@ from jazzmus.dataset.eval_functions import compute_poliphony_metrics
 from jazzmus.model.smt.configuration_smt import SMTConfig
 from jazzmus.model.smt.modeling_smt import SMTModelForCausalLM
 from torchinfo import summary
+from jazzmus.dataset.tokenizer import untokenize
 
 
 class SMT_Trainer(L.LightningModule):
@@ -96,15 +97,18 @@ class SMT_Trainer(L.LightningModule):
 
         predicted_sequence, _ = self.model.predict(input=x)
 
-        dec = "".join(predicted_sequence)
-        dec = dec.replace("<t>", "\t")
-        dec = dec.replace("<b>", "\n")
-        dec = dec.replace("<s>", " ")
+        dec = untokenize(predicted_sequence)
+        gt = untokenize([self.model.i2w[token.item()] for token in y.squeeze(0)[:-1]])
 
-        gt = "".join([self.model.i2w[token.item()] for token in y.squeeze(0)[:-1]])
-        gt = gt.replace("<t>", "\t")
-        gt = gt.replace("<b>", "\n")
-        gt = gt.replace("<s>", " ")
+        # dec = "".join(predicted_sequence)
+        # dec = dec.replace("<t>", "\t")
+        # dec = dec.replace("<b>", "\n")
+        # dec = dec.replace("<s>", " ")
+
+        # gt = "".join([self.model.i2w[token.item()] for token in y.squeeze(0)[:-1]])
+        # gt = gt.replace("<t>", "\t")
+        # gt = gt.replace("<b>", "\n")
+        # gt = gt.replace("<s>", " ")
 
         self.preds.append(dec)
         self.grtrs.append(gt)
