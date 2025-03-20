@@ -8,38 +8,55 @@ class GtParser:
         self.character_lvl = character_lvl
 
     def _get_character_lvl(self, lines):
-        raise NotImplementedError
+        # split each character into a token
+        tokens = []
+        for l in lines:
+            for c in l:
+                tokens.append(c)
+
+        # if there are < t > or < n > tokens, they should be a single token
+        # e.g. < t > should be <t>
+        for i, t in enumerate(tokens):
+            if t == "<" and tokens[i+1] == "t" and tokens[i+2] == ">":
+                tokens[i] = "<t>"
+                tokens.pop(i+1)
+                tokens.pop(i+1)
+            if t == "<" and tokens[i+1] == "n" and tokens[i+2] == ">":
+                tokens[i] = "<n>"
+                tokens.pop(i+1)
+                tokens.pop(i+1)
+        return tokens
 
     def convert(self, src_file: str):
-        # read file and get lines
-        # print(f"DEBUG: src_file == {src_file}")
-        reserved_lines = ["!!linebreak", "!!pagebreak"]
-        tokens = []
-        with open(src_file) as f:
+        from jazzmus.dataset.tokenizer import process_text
+        with open(src_file, "r", encoding="utf-8") as f:
             lines = f.read().splitlines()
+            return process_text(lines, self.character_lvl)
+        # # read file and get lines
+        # # print(f"DEBUG: src_file == {src_file}")
+        # reserved_lines = ["!!linebreak", "!!pagebreak", '*I"Voice']
+        # tokens = []
+        # with open(src_file) as f:
+        #     lines = f.read().splitlines()
 
-            if self.character_lvl:
-                return self._get_character_lvl(lines)
+        #     for l in lines:
+        #         # if some part of the line is like any reserved_lines, skip it
+        #         if any([rl in l for rl in reserved_lines]):
+        #             continue
 
-            # if self.split_enc:
-            #     lines = self._split_encode(lines)
+        #         elements = l.split("\t")
 
-            # if self.process_harm:
-            #     lines = self._harm_split_encode(lines)
-            for l in lines:
-                if l in reserved_lines: 
-                    continue
+        #         for e in elements:
+        #             tokens.append(e)
+        #             tokens.append("<t>")
 
-                elements = l.split("\t")
-
-                for e in elements:
-                    tokens.append(e)
-                    tokens.append("<t>")
-
-                # if the last one is a tab, remove it
-                if tokens[-1] == "<t>":
-                    tokens.pop()
-                tokens.append("<n>")
+        #         # if the last one is a tab, remove it
+        #         if tokens[-1] == "<t>":
+        #             tokens.pop()
+        #         tokens.append("<n>")
+            
+        #     if self.character_lvl:
+        #         tokens = self._get_character_lvl(tokens)
         return tokens
 
     def _split_encode(self, lines):
@@ -81,27 +98,13 @@ class GtParser:
 
 
 if __name__ == "__main__":
-    example_file = "data/jazzmus/gt/img_0_0.txt"
+    example_file = "data/jazzmus_dataset_regions/a-day-in-the-life-of-a-fool_version_1_633510.kern"
 
     gt_parser_raw = GtParser()
     transcript = gt_parser_raw.convert(example_file)
     print("Raw:")
     print(transcript)
-    print()
-
-    gt_parser_split = GtParser(split_enc=True)
-    transcript = gt_parser_split.convert(example_file)
-    print("Split:")
-    print(transcript)
-    print()
-
-    # gt_parser_harm_proc = GtParser(process_harm=True)
-    # transcript = gt_parser_harm_proc.convert(example_file)
-    # print("Harm proc:")
-    # print(transcript)
-    # print()
-
-    gt_parser_harm_split = GtParser(process_harm=True, split_enc=True)
-    transcript = gt_parser_harm_split.convert(example_file)
-    print("Harm proc and split:")
+    print("Character level:")
+    gt_parser_char = GtParser(character_lvl=True)
+    transcript = gt_parser_char.convert(example_file)
     print(transcript)

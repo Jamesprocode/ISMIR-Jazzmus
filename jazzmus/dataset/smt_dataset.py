@@ -15,6 +15,8 @@ from torchvision import transforms
 import cv2
 
 from jazzmus.dataset.data_preprocessing import augment, convert_img_to_tensor
+from jazzmus.dataset.tokenizer import process_text
+
 from jazzmus.dataset.smt_dataset_utils import (
     check_and_retrieveVocabulary,
     load_kern,
@@ -194,24 +196,19 @@ class GrandStaffSingleSystem(OMRIMG2SEQDataset):
         for idx, krn in enumerate(Y):
             # krnlines = []
 
-            # KERN TOKENIZATION
-            krn = "".join(krn)
-            krn = krn.replace('*I"Voice	*\n', "")
-            krn = krn.replace("!!linebreak:original\n", "")
-            krn = krn.replace("!!pagebreak:original\n", "")
-            # !LO:TX:a:t=	!
-            krn = krn.replace(" ", " <s> ")
-            krn = krn.replace("·", "")
-            krn = krn.replace("\t", " <t> ")
-            krn = krn.replace("\n", " <b> ")
-            krn = krn.split(" ")
 
-            Y[idx] = self.erase_numbers_in_tokens_with_equal(
-                ["<bos>"] + krn + ["<eos>"]
-            )
-            # TODO
-            if self.char_lvl:
-                raise NotImplementedError("Char level not implemented yet")
+            # # KERN TOKENIZATION
+            # krn = "".join(krn)
+            # krn = krn.replace('*I"Voice	*\n', "")
+            # krn = krn.replace("!!linebreak:original\n", "")
+            # krn = krn.replace("!!pagebreak:original\n", "")
+            # krn = krn.replace(" ", " <s> ")
+            # krn = krn.replace("·", "")
+            # krn = krn.replace("\t", " <t> ")
+            # krn = krn.replace("\n", " <b> ")
+            # krn = krn.split(" ")
+
+            Y[idx] = ["<bos>"] + process_text(lines=krn, char_lvl=self.char_lvl) + ["<eos>"]
         return Y
 
 
