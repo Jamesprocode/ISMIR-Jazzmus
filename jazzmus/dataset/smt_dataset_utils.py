@@ -1,27 +1,12 @@
 import os
 
+from os import path
+
+import matplotlib.pyplot as plt
 import numpy as np
 
-from os import path
 from loguru import logger
-import torch
-from torchvision.utils import make_grid
-import matplotlib.pyplot as plt
 
-def show_random_batch(datamodule):
-    dataloader = torch.utils.data.DataLoader(datamodule, batch_size=4, shuffle=True)
-    
-    # Get a single batch
-    images, labels = next(iter(dataloader))
-    
-    # Convert images to a grid
-    img_grid = make_grid(images, nrow=4, normalize=True)  # Adjust nrow based on batch size
-
-    # Display the images
-    plt.figure(figsize=(10, 5))
-    plt.imshow(img_grid.permute(1, 2, 0))  # Convert tensor to image format
-    plt.axis("off")
-    plt.savefig("random_batch.png")
 
 def levenshtein(a, b):
     "Computes the Levenshtein distance between a and b."
@@ -97,7 +82,7 @@ def list_files_recursively(folder):
 
 
 def load_kern(path):
-    with open(path, "r") as bfile:
+    with open(path) as bfile:
         return bfile.readlines()
 
 

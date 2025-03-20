@@ -470,9 +470,9 @@ class SMTModelForCausalLM(PreTrainedModel):
         # PIANOFORM
         next_config = ConvNextConfig(
             num_channels=config.in_channels,
-            num_stages=3,
-            hidden_sizes=[64, 128, 256],
-            depths=[3, 3, 9],
+            num_stages=config.enc_stages,
+            hidden_sizes=config.hidden_enc_sizes,
+            depths=config.enc_depths,
         )
 
         self.encoder = ConvNextModel(next_config)

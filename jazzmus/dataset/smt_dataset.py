@@ -1,26 +1,18 @@
 import re
 
-from math import ceil
-
+import cv2
 import gin
 import numpy as np
 import torch
 
 from lightning import LightningDataModule
-from PIL import Image
 from rich import progress
 from torch.utils.data import Dataset
 from torchvision import transforms
 
-import cv2
-
 from jazzmus.dataset.data_preprocessing import augment, convert_img_to_tensor
+from jazzmus.dataset.smt_dataset_utils import check_and_retrieveVocabulary, load_kern
 from jazzmus.dataset.tokenizer import process_text
-
-from jazzmus.dataset.smt_dataset_utils import (
-    check_and_retrieveVocabulary,
-    load_kern,
-)
 
 
 def load_set(dataset, fold, split="train", reduce_ratio=1.0, fixed_size=None):
@@ -212,9 +204,6 @@ class GrandStaffSingleSystem(OMRIMG2SEQDataset):
             Y[idx] = (
                 ["<bos>"] + process_text(lines=krn, char_lvl=self.char_lvl) + ["<eos>"]
             )
-            from jazzmus.dataset.tokenizer import untokenize
-
-            print(untokenize(Y[idx]))
         return Y
 
 

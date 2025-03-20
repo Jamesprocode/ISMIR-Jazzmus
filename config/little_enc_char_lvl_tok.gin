@@ -1,0 +1,22 @@
+# path to splits
+CTCDataModule.path_to_splits = "data/jazzmus_dataset_regions/splits"
+CTCDataset.split_enc = False
+CTCDataset.harm_proc = False
+CTCDataset.vocab_folder = "data/jazzmus_dataset_regions/vocab" # a vocab_folder/vocabs will be created
+GrandStaffDataset.data_path = "data/jazzmus_dataset_regions/splits"
+GrandStaffDataset.vocab_name = "vocab"
+GrandStaffDataset.batch_size = 1
+GrandStaffDataset.num_workers = 4
+GrandStaffDataset.fold = 0
+make_vocabulary.pathToSave = "data/jazzmus_dataset_regions/vocab"
+
+
+# SMT ENCODER
+SMTConfig.enc_stages = 2
+SMTConfig.hidden_enc_sizes = [128, 256]
+SMTConfig.enc_depths = [3, 9]
+
+
+# ENCODING
+GtParser.character_lvl = True # this is for crnn
+GrandStaffSingleSystem.char_lvl = True # this is for smt

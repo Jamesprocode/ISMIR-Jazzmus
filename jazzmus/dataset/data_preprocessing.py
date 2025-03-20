@@ -6,15 +6,10 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 
-from torchvision import transforms
-from jazzmus.dataset.transforms_custom import *
-
-import numpy as np
-
-import os
-import random
-import numpy as np
 from PIL import Image
+from torchvision import transforms
+
+from jazzmus.dataset.transforms_custom import *
 
 
 # import joblib
@@ -145,18 +140,17 @@ def ctc_batch_preparation(batch):
     yl = torch.tensor(yl, dtype=torch.int32)
     return x, xl, y, yl
 
-from PIL import Image
-from torchvision import transforms
-from .transforms_custom import *
-
-import numpy as np
 
 def augment(image):
-    distortion_perspective = np.random.uniform(0,0.3)
+    distortion_perspective = np.random.uniform(0, 0.3)
 
     elastic_dist_magnitude = np.random.randint(1, 20 + 1)
     elastic_dist_kernel = np.random.randint(1, 3 + 1)
-    magnitude_w, magnitude_h = (elastic_dist_magnitude, 1) if np.random.randint(2) == 0 else (1, elastic_dist_magnitude)
+    magnitude_w, magnitude_h = (
+        (elastic_dist_magnitude, 1)
+        if np.random.randint(2) == 0
+        else (1, elastic_dist_magnitude)
+    )
     kernel_h = np.random.randint(1, 3 + 1)
     kernel_w = np.random.randint(1, 3 + 1)
 
@@ -167,33 +161,56 @@ def augment(image):
     if np.random.randint(2) == 0:
         dilation_erosion = Erosion((kernel_w, kernel_h), 1)
     else:
-        dilation_erosion = Dilation((kernel_w, kernel_h),1)
+        dilation_erosion = Dilation((kernel_w, kernel_h), 1)
 
     transform = transforms.Compose(
-        [   
+        [
             transforms.ToPILImage(),
-            transforms.RandomPerspective(distortion_scale=distortion_perspective, p=1, interpolation=Image.BILINEAR, fill=255),
-            transforms.RandomApply([ElasticDistortion(grid=(elastic_dist_kernel, elastic_dist_kernel), magnitude=(magnitude_w, magnitude_h), min_sep=(1,1))], p=0.2),
+            transforms.RandomPerspective(
+                distortion_scale=distortion_perspective,
+                p=1,
+                interpolation=Image.BILINEAR,
+                fill=255,
+            ),
+            transforms.RandomApply(
+                [
+                    ElasticDistortion(
+                        grid=(elastic_dist_kernel, elastic_dist_kernel),
+                        magnitude=(magnitude_w, magnitude_h),
+                        min_sep=(1, 1),
+                    )
+                ],
+                p=0.2,
+            ),
             transforms.RandomApply([RandomTransform(16)], p=0.2),
             transforms.RandomApply([dilation_erosion], p=0.2),
             transforms.RandomApply([BrighnessAjust(br_factor)], p=0.2),
             transforms.RandomApply([ContrastAdjust(ctr_factor)], p=0.2),
             transforms.Grayscale(),
-            transforms.ToTensor()
+            transforms.ToTensor(),
         ]
     )
-    
+
     image = transform(image)
 
     return image
 
+
 def convert_img_to_tensor(image, force_one_channel=False):
     transform = transforms.Compose(
-        [transforms.ToPILImage(),
-        transforms.Grayscale(),
-        transforms.ToTensor()]
+        [transforms.ToPILImage(), transforms.Grayscale(), transforms.ToTensor()]
     )
 
     image = transform(image)
 
+    return image
+
+
+def convert_tensor_to_img(tensor):
+    """
+    Converts a PyTorch tensor back to a PIL image.
+    Assumes the tensor is in (C, H, W) format.
+    """
+    transform = transforms.ToPILImage()
+    image = transform(tensor)
     return image
