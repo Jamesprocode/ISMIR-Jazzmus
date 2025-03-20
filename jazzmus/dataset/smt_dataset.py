@@ -22,6 +22,7 @@ from jazzmus.dataset.smt_dataset_utils import (
     load_kern,
 )
 
+
 def load_set(dataset, fold, split="train", reduce_ratio=1.0, fixed_size=None):
     x = []
     y = []
@@ -56,7 +57,7 @@ def load_set(dataset, fold, split="train", reduce_ratio=1.0, fixed_size=None):
             height = int(np.ceil(max(img.shape[0], 256) * reduce_ratio))
 
         img = cv2.resize(img, (width, height))
-        y.append(krn_content) # list of lines
+        y.append(krn_content)  # list of lines
         # y.append([content + "\n" for content in krn_content.split("\n")])
         x.append(img)
 
@@ -156,6 +157,7 @@ class OMRIMG2SEQDataset(Dataset):
     def get_i2w(self):
         return self.i2w
 
+
 @gin.configurable
 class GrandStaffSingleSystem(OMRIMG2SEQDataset):
     def __init__(self, data_path, split, fold, augment=False, char_lvl=False) -> None:
@@ -196,7 +198,6 @@ class GrandStaffSingleSystem(OMRIMG2SEQDataset):
         for idx, krn in enumerate(Y):
             # krnlines = []
 
-
             # # KERN TOKENIZATION
             # krn = "".join(krn)
             # krn = krn.replace('*I"Voice	*\n', "")
@@ -208,7 +209,12 @@ class GrandStaffSingleSystem(OMRIMG2SEQDataset):
             # krn = krn.replace("\n", " <b> ")
             # krn = krn.split(" ")
 
-            Y[idx] = ["<bos>"] + process_text(lines=krn, char_lvl=self.char_lvl) + ["<eos>"]
+            Y[idx] = (
+                ["<bos>"] + process_text(lines=krn, char_lvl=self.char_lvl) + ["<eos>"]
+            )
+            from jazzmus.dataset.tokenizer import untokenize
+
+            print(untokenize(Y[idx]))
         return Y
 
 
