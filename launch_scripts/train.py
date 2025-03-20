@@ -60,7 +60,12 @@ def train(
 
     elif model_type == "smt":
         # datamodule
-        datamodule = GrandStaffDataset(fold=fold)
+        datamodule = GrandStaffDataset(fold=fold, batch_size=batch_size)
+
+
+        from jazzmus.dataset.smt_dataset_utils import show_random_batch
+        show_random_batch(datamodule)
+
         max_height, max_width = datamodule.train_set.get_max_hw()
         max_len = datamodule.train_set.get_max_seqlen()
 
