@@ -1,8 +1,10 @@
 import os
 
+from os import path
+
+import matplotlib.pyplot as plt
 import numpy as np
 
-from os import path
 from loguru import logger
 
 
@@ -80,7 +82,7 @@ def list_files_recursively(folder):
 
 
 def load_kern(path):
-    with open(path, "r") as bfile:
+    with open(path) as bfile:
         return bfile.readlines()
 
 

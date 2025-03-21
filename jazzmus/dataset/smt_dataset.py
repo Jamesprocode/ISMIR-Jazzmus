@@ -1,26 +1,28 @@
 import re
 
-from math import ceil
-
+import cv2
 import gin
 import numpy as np
 import torch
 
 from lightning import LightningDataModule
-from PIL import Image
 from rich import progress
 from torch.utils.data import Dataset
 from torchvision import transforms
 
-import cv2
-
 from jazzmus.dataset.data_preprocessing import augment, convert_img_to_tensor
-from jazzmus.dataset.smt_dataset_utils import (
-    check_and_retrieveVocabulary,
-    load_kern,
-)
+from jazzmus.dataset.smt_dataset_utils import check_and_retrieveVocabulary, load_kern
+from jazzmus.dataset.tokenizer import process_text
 
-def load_set(dataset, fold, split="train", reduce_ratio=1.0, fixed_size=None):
+
+def load_set(
+    dataset,
+    fold,
+    split="train",
+    reduce_ratio=1.0,
+    fixed_size=None,
+    fixed_img_height=256,
+):
     x = []
     y = []
 
@@ -46,6 +48,10 @@ def load_set(dataset, fold, split="train", reduce_ratio=1.0, fixed_size=None):
         if fixed_size is not None:
             width = fixed_size[1]
             height = fixed_size[0]
+        elif fixed_img_height is not None:
+            # keep the aspect ratio
+            width = int(np.ceil(img.shape[1] * fixed_img_height / img.shape[0]))
+            height = fixed_img_height
         elif img.shape[1] > 3056:
             width = int(np.ceil(3056 * reduce_ratio))
             height = int(np.ceil(max(img.shape[0], 256) * reduce_ratio))
@@ -54,7 +60,7 @@ def load_set(dataset, fold, split="train", reduce_ratio=1.0, fixed_size=None):
             height = int(np.ceil(max(img.shape[0], 256) * reduce_ratio))
 
         img = cv2.resize(img, (width, height))
-        y.append(krn_content) # list of lines
+        y.append(krn_content)  # list of lines
         # y.append([content + "\n" for content in krn_content.split("\n")])
         x.append(img)
 
@@ -65,6 +71,10 @@ def batch_preparation_img2seq(data):
     images = [sample[0] for sample in data]
     dec_in = [sample[1] for sample in data]
     gt = [sample[2] for sample in data]
+
+    print("Original shapes")
+    for i in images:
+        print(i.shape)
 
     max_image_width = max(128, max([img.shape[2] for img in images]))
     max_image_height = max(256, max([img.shape[1] for img in images]))
@@ -154,14 +164,29 @@ class OMRIMG2SEQDataset(Dataset):
     def get_i2w(self):
         return self.i2w
 
+
 @gin.configurable
 class GrandStaffSingleSystem(OMRIMG2SEQDataset):
-    def __init__(self, data_path, split, fold, augment=False, char_lvl=False) -> None:
+    def __init__(
+        self,
+        data_path,
+        split,
+        fold,
+        augment=False,
+        char_lvl=False,
+        fixed_img_height=256,
+    ) -> None:
         self.augment = augment
         self.teacher_forcing_error_rate = 0.2
         self.fold = fold
         self.char_lvl = char_lvl
-        self.x, self.y = load_set(data_path, split=split, fold=self.fold)
+        self.fixed_img_height = fixed_img_height
+        self.x, self.y = load_set(
+            data_path,
+            split=split,
+            fold=self.fold,
+            fixed_img_height=self.fixed_img_height,
+        )
         self.y = self.preprocess_gt(self.y)
         self.tensorTransform = transforms.ToTensor()
         self.num_sys_gen = 1
@@ -194,24 +219,20 @@ class GrandStaffSingleSystem(OMRIMG2SEQDataset):
         for idx, krn in enumerate(Y):
             # krnlines = []
 
-            # KERN TOKENIZATION
-            krn = "".join(krn)
-            krn = krn.replace('*I"Voice	*\n', "")
-            krn = krn.replace("!!linebreak:original\n", "")
-            krn = krn.replace("!!pagebreak:original\n", "")
-            # !LO:TX:a:t=	!
-            krn = krn.replace(" ", " <s> ")
-            krn = krn.replace("·", "")
-            krn = krn.replace("\t", " <t> ")
-            krn = krn.replace("\n", " <b> ")
-            krn = krn.split(" ")
+            # # KERN TOKENIZATION
+            # krn = "".join(krn)
+            # krn = krn.replace('*I"Voice	*\n', "")
+            # krn = krn.replace("!!linebreak:original\n", "")
+            # krn = krn.replace("!!pagebreak:original\n", "")
+            # krn = krn.replace(" ", " <s> ")
+            # krn = krn.replace("·", "")
+            # krn = krn.replace("\t", " <t> ")
+            # krn = krn.replace("\n", " <b> ")
+            # krn = krn.split(" ")
 
-            Y[idx] = self.erase_numbers_in_tokens_with_equal(
-                ["<bos>"] + krn + ["<eos>"]
+            Y[idx] = (
+                ["<bos>"] + process_text(lines=krn, char_lvl=self.char_lvl) + ["<eos>"]
             )
-            # TODO
-            if self.char_lvl:
-                raise NotImplementedError("Char level not implemented yet")
         return Y
 
 

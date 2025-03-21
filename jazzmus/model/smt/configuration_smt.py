@@ -1,6 +1,10 @@
 from transformers import PretrainedConfig
 
 
+import gin
+
+
+@gin.configurable
 class SMTConfig(PretrainedConfig):
     model_type = "SMT"
 
@@ -20,6 +24,9 @@ class SMTConfig(PretrainedConfig):
         num_dec_layers=8,
         attn_heads=4,
         use_flash_attn=False,
+        enc_stages=3,
+        hidden_enc_sizes=[64, 128, 256],
+        enc_depths=[3, 3, 9],
         **kwargs,
     ):
         self.architectures = ["SMT"]
@@ -37,3 +44,6 @@ class SMTConfig(PretrainedConfig):
         self.num_attn_heads = attn_heads
         self.num_dec_layers = num_dec_layers
         self.use_flash_attn = use_flash_attn
+        self.enc_stages = enc_stages
+        self.hidden_enc_sizes = hidden_enc_sizes
+        self.enc_depths = enc_depths
