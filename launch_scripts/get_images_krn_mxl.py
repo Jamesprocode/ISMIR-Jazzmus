@@ -4,6 +4,10 @@ import argparse
 from tqdm import tqdm
 from jazzmus.dataset.generate_synthetic_score import render_and_clean_lyrics
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from PIL import Image
+from io import BytesIO
+import sys
+import warnings
 
 
 def process_single_json(f, override_existing=False, add_synthetic_jazz=False, add_synthetic_classical=False, musescore_jazz_style_path=None, musescore_path=None):
@@ -16,17 +20,30 @@ def process_single_json(f, override_existing=False, add_synthetic_jazz=False, ad
     if override_existing or not image_path.exists():
         # download image and store it in the same folder with the name of the file
         image_url = data["original"]
+        if "http://localhost:8182/" in image_url:
+            image_url = image_url.replace("http://localhost:8182/", "https://muret.dlsi.ua.es/images/")
         # download the image
         response = requests.get(image_url)
-        # save it in the same folder
-        with open(image_path, "wb") as img:
-            img.write(response.content)
+        # Use context manager to catch the DecompressionBombWarning occurs
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always", Image.DecompressionBombWarning)
+
+            img = Image.open(BytesIO(response.content))
+
+            # Check if DecompressionBombWarning was issued
+            if any(issubclass(warning.category, Image.DecompressionBombWarning) for warning in w):
+                print(f"DecompressionBombWarning for file: {f}")
+                # downscale the image by a factor of 2
+                img.thumbnail((img.width // 2, img.height // 2))
+
+        # convert it to png
+        img.save(image_path, "PNG")
 
     # export kern
     kern_path = f.with_suffix(".krn")
     if override_existing or not kern_path.exists():
         # save kern content for render purposes
-        kern = data["full_page_kern"]
+        kern = data["encodings"]["**kern"]
         with open(kern_path, "w", encoding="utf-8") as krn:
             krn.write(kern)
 
@@ -34,7 +51,7 @@ def process_single_json(f, override_existing=False, add_synthetic_jazz=False, ad
     musicxml_path = f.with_suffix(".musicxml")
     if override_existing or not musicxml_path.exists():
         # save musicxml content for render purposes
-        musicxml = data["full_page_musicxml"]
+        musicxml = data["encodings"]["musicxml"]
         with open(musicxml_path, "w", encoding="utf-8") as music:
             music.write(musicxml)
 
@@ -81,12 +98,17 @@ if __name__ == "__main__":
     files = list(Path(args.path).glob("*.json"))
     # for f in tqdm(files):
     #     process_single_json(f, args.override_existing, args.add_synthetic_jazz, args.add_synthetic_classical, args.musescore_jazz_style_path, args.musescore_path)
-    with ThreadPoolExecutor(max_workers=8) as executor:
-        futures = [executor.submit(process_single_json, f, args.override_existing,
-                                   args.add_synthetic_jazz, args.add_synthetic_classical,
-                                   args.musescore_jazz_style_path, args.musescore_path)
-                   for f in files]
+    try:
+        with ThreadPoolExecutor(max_workers=8) as executor:
+            futures = [executor.submit(process_single_json, f, args.override_existing,
+                                    args.add_synthetic_jazz, args.add_synthetic_classical,
+                                    args.musescore_jazz_style_path, args.musescore_path)
+                    for f in files]
 
-        # Using tqdm to monitor progress as futures complete
-        for _ in tqdm(as_completed(futures), total=len(futures), desc="Processing files"):
-            pass
+            # Using tqdm to monitor progress as futures complete
+            for _ in tqdm(as_completed(futures), total=len(futures), desc="Processing files"):
+                pass
+    except KeyboardInterrupt:
+        print("KeyboardInterrupt caught, shutting down...")
+        executor.shutdown(wait=False)
+        sys.exit(1)
