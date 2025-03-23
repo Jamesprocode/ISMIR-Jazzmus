@@ -12,7 +12,7 @@ from jazzmus.dataset.ctc_datamodule import CTCDataModule
 from jazzmus.dataset.smt_dataset import GrandStaffDataset
 from jazzmus.model.crnn.model import CTCTrainedCRNN
 from jazzmus.smt_trainer import SMT_Trainer
-from jazzmus.utils.file_utils import check_folders
+from jazzmus.utils.file_utils import check_folders, print_smt_batch
 
 
 PYTORCH_ENABLE_MPS_FALLBACK = 1
@@ -60,24 +60,7 @@ def train(
     elif model_type == "smt":
         # datamodule
         datamodule = GrandStaffDataset(fold=fold, batch_size=batch_size)
-        train_dataloader_ = datamodule.train_dataloader()
-
-        # batch = next(iter(train_dataloader_))
-        # images = batch[0]
-        # from matplotlib import pyplot as plt
-
-        # fig = plt.figure()
-        # gs = fig.add_gridspec(len(images), hspace=0)
-        # axs = gs.subplots(sharex=True)
-        # fig.suptitle("Batch of images")
-
-        # for i in range(len(images)):
-        #     print(images[i].shape)
-        #     image_to_plot = images[i].numpy().squeeze(0)
-        #     axs[i].imshow(image_to_plot, cmap="gray")
-        # for ax in axs:
-        #     ax.label_outer()
-        # plt.savefig("random_batch.pdf")
+        print_smt_batch(datamodule.train_dataloader())
 
         max_height, max_width = datamodule.train_set.get_max_hw()
         max_len = datamodule.train_set.get_max_seqlen()
