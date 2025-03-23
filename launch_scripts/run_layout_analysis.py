@@ -1,7 +1,7 @@
 from pathlib import Path
 from jazzmus.utils.la_inference import run_la_inference
 
-files = list(Path("./data/jazzmus_dataset").glob("*.png"))
+files = list(Path("./data/jazzmus_dataset").glob("*.jpg"))
 
 files = [
     "/Users/jc/Documents/tesis/ISMIR-Jazzmus/la_result/jazzmus_1.jpeg",

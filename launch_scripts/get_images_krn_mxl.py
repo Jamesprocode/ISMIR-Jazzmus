@@ -10,18 +10,27 @@ import sys
 import warnings
 
 
-def process_single_json(f, override_existing=False, add_synthetic_jazz=False, add_synthetic_classical=False, musescore_jazz_style_path=None, musescore_path=None):
+def process_single_json(
+    f,
+    override_existing=False,
+    add_synthetic_jazz=False,
+    add_synthetic_classical=False,
+    musescore_jazz_style_path=None,
+    musescore_path=None,
+):
     # read the file
     with open(f) as file:
         data = json.load(file)
 
     # download images
-    image_path = f.with_suffix(".png")
+    image_path = f.with_suffix(".jpg")
     if override_existing or not image_path.exists():
         # download image and store it in the same folder with the name of the file
         image_url = data["original"]
         if "http://localhost:8182/" in image_url:
-            image_url = image_url.replace("http://localhost:8182/", "https://muret.dlsi.ua.es/images/")
+            image_url = image_url.replace(
+                "http://localhost:8182/", "https://muret.dlsi.ua.es/images/"
+            )
         # download the image
         response = requests.get(image_url)
         # Use context manager to catch the DecompressionBombWarning occurs
@@ -31,13 +40,16 @@ def process_single_json(f, override_existing=False, add_synthetic_jazz=False, ad
             img = Image.open(BytesIO(response.content))
 
             # Check if DecompressionBombWarning was issued
-            if any(issubclass(warning.category, Image.DecompressionBombWarning) for warning in w):
+            if any(
+                issubclass(warning.category, Image.DecompressionBombWarning)
+                for warning in w
+            ):
                 print(f"DecompressionBombWarning for file: {f}")
                 # downscale the image by a factor of 2
                 img.thumbnail((img.width // 2, img.height // 2))
 
-        # convert it to png
-        img.save(image_path, "PNG")
+        # convert it to jpg, IIIF server automatically converts to jpg when storing info
+        img.save(image_path, "JPEG")
 
     # export kern
     kern_path = f.with_suffix(".krn")
@@ -62,24 +74,55 @@ def process_single_json(f, override_existing=False, add_synthetic_jazz=False, ad
         assert musescore_path is not None
         synthetic_jazz_svg_path = f.parent / Path(str(f.stem) + "_synjazz.svg")
         if override_existing or not synthetic_jazz_svg_path.exists():
-            render_and_clean_lyrics("musescore", musescore_jazz_style_path, "jazz", musescore_path, musicxml_path, synthetic_jazz_svg_path)
+            render_and_clean_lyrics(
+                "musescore",
+                musescore_jazz_style_path,
+                "jazz",
+                musescore_path,
+                musicxml_path,
+                synthetic_jazz_svg_path,
+            )
 
     # classical
     if add_synthetic_classical:
         assert musescore_jazz_style_path is not None
         assert musescore_path is not None
-        synthetic_classical_svg_path = f.parent / Path(str(f.stem) + "_synclassical.svg")
+        synthetic_classical_svg_path = f.parent / Path(
+            str(f.stem) + "_synclassical.svg"
+        )
         if override_existing or not synthetic_classical_svg_path.exists():
-            render_and_clean_lyrics("musescore", musescore_jazz_style_path, "classical", musescore_path, musicxml_path, synthetic_classical_svg_path)
-
+            render_and_clean_lyrics(
+                "musescore",
+                musescore_jazz_style_path,
+                "classical",
+                musescore_path,
+                musicxml_path,
+                synthetic_classical_svg_path,
+            )
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Download images and store them in the same folder")
-    parser.add_argument("path", type=str, help="Path to the folder containing the json files")
-    parser.add_argument("--override_existing", action="store_true", help="Override existing files if they exist already")
-    parser.add_argument("--add-synthetic-jazz", action="store_true", help="Create the syntheti svg in jazz font")
-    parser.add_argument("--add-synthetic-classical", action="store_true", help="Create the synthetic svg in classical font")
+    parser = argparse.ArgumentParser(
+        description="Download images and store them in the same folder"
+    )
+    parser.add_argument(
+        "path", type=str, help="Path to the folder containing the json files"
+    )
+    parser.add_argument(
+        "--override_existing",
+        action="store_true",
+        help="Override existing files if they exist already",
+    )
+    parser.add_argument(
+        "--add-synthetic-jazz",
+        action="store_true",
+        help="Create the syntheti svg in jazz font",
+    )
+    parser.add_argument(
+        "--add-synthetic-classical",
+        action="store_true",
+        help="Create the synthetic svg in classical font",
+    )
     parser.add_argument(
         "--musescore-jazz-style-path",
         help="Path to the MuseScore style file.",
@@ -100,13 +143,23 @@ if __name__ == "__main__":
     #     process_single_json(f, args.override_existing, args.add_synthetic_jazz, args.add_synthetic_classical, args.musescore_jazz_style_path, args.musescore_path)
     try:
         with ThreadPoolExecutor(max_workers=8) as executor:
-            futures = [executor.submit(process_single_json, f, args.override_existing,
-                                    args.add_synthetic_jazz, args.add_synthetic_classical,
-                                    args.musescore_jazz_style_path, args.musescore_path)
-                    for f in files]
+            futures = [
+                executor.submit(
+                    process_single_json,
+                    f,
+                    args.override_existing,
+                    args.add_synthetic_jazz,
+                    args.add_synthetic_classical,
+                    args.musescore_jazz_style_path,
+                    args.musescore_path,
+                )
+                for f in files
+            ]
 
             # Using tqdm to monitor progress as futures complete
-            for _ in tqdm(as_completed(futures), total=len(futures), desc="Processing files"):
+            for _ in tqdm(
+                as_completed(futures), total=len(futures), desc="Processing files"
+            ):
                 pass
     except KeyboardInterrupt:
         print("KeyboardInterrupt caught, shutting down...")

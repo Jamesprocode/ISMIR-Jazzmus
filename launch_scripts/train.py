@@ -77,7 +77,7 @@ def train(
         #     axs[i].imshow(image_to_plot, cmap="gray")
         # for ax in axs:
         #     ax.label_outer()
-        # plt.savefig("random_batch.png")
+        # plt.savefig("random_batch.pdf")
 
         max_height, max_width = datamodule.train_set.get_max_hw()
         max_len = datamodule.train_set.get_max_seqlen()
