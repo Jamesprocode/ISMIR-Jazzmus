@@ -124,7 +124,7 @@ def train(
         logger=my_logger,
         callbacks=callbacks,
         max_epochs=epochs,
-        check_val_every_n_epoch=1,
+        check_val_every_n_epoch=5,
         deterministic=False,
         benchmark=False,
         precision="16-mixed",
