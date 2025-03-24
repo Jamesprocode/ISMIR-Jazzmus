@@ -8,8 +8,9 @@ from jazzmus.model.smt.configuration_smt import SMTConfig
 from jazzmus.model.smt.modeling_smt import SMTModelForCausalLM
 from torchinfo import summary
 from jazzmus.dataset.tokenizer import untokenize
+import gin
 
-
+@gin.configurable
 class SMT_Trainer(L.LightningModule):
     def __init__(
         self,
@@ -27,6 +28,7 @@ class SMT_Trainer(L.LightningModule):
         cp=None,
         texture=None,
         fold=None,
+        lr=1e-4,
     ):
         super().__init__()
         self.config = SMTConfig(
@@ -48,6 +50,7 @@ class SMT_Trainer(L.LightningModule):
         self.padding_token = padding_token
         self.texture = texture
         self.fold = fold
+        self.lr = lr
 
         self.preds = []
         self.grtrs = []
@@ -67,7 +70,7 @@ class SMT_Trainer(L.LightningModule):
         optimizer = torch.optim.Adam(
             list(self.model.encoder.parameters())
             + list(self.model.decoder.parameters()),
-            lr=1e-4,  # Initial learning rate
+            lr=self.lr,  # Peak LR
             amsgrad=False,
         )
 

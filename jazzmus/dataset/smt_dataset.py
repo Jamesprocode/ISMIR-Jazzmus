@@ -72,9 +72,9 @@ def batch_preparation_img2seq(data):
     dec_in = [sample[1] for sample in data]
     gt = [sample[2] for sample in data]
 
-    print("Original shapes")
-    for i in images:
-        print(i.shape)
+    # print("Original shapes")
+    # for i in images:
+    #     print(i.shape)
 
     max_image_width = max(128, max([img.shape[2] for img in images]))
     max_image_height = max(256, max([img.shape[1] for img in images]))
@@ -282,7 +282,7 @@ class GrandStaffDataset(LightningDataModule):
     def val_dataloader(self):
         return torch.utils.data.DataLoader(
             self.val_set,
-            batch_size=self.batch_size,
+            batch_size=1,
             num_workers=self.num_workers,
             collate_fn=batch_preparation_img2seq,
         )
@@ -290,7 +290,7 @@ class GrandStaffDataset(LightningDataModule):
     def test_dataloader(self):
         return torch.utils.data.DataLoader(
             self.test_set,
-            batch_size=self.batch_size,
+            batch_size=1,
             num_workers=self.num_workers,
             collate_fn=batch_preparation_img2seq,
         )

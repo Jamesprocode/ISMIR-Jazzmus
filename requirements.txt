@@ -19,3 +19,4 @@ datasets
 wandb
 scikit-learn
 ultralytics
+lxml
