@@ -174,13 +174,22 @@ class GrandStaffSingleSystem(OMRIMG2SEQDataset):
         fold,
         augment=False,
         char_lvl=False,
+        medium_lvl=False,
         fixed_img_height=256,
     ) -> None:
         self.augment = augment
         self.teacher_forcing_error_rate = 0.2
         self.fold = fold
+
+        # tokenization
         self.char_lvl = char_lvl
+        if medium_lvl:
+            assert not char_lvl, "Cannot have both middle and char level"
+        self.medium_lvl = medium_lvl
+
+        # image parameters
         self.fixed_img_height = fixed_img_height
+
         self.x, self.y = load_set(
             data_path,
             split=split,
@@ -217,21 +226,9 @@ class GrandStaffSingleSystem(OMRIMG2SEQDataset):
 
     def preprocess_gt(self, Y):
         for idx, krn in enumerate(Y):
-            # krnlines = []
-
-            # # KERN TOKENIZATION
-            # krn = "".join(krn)
-            # krn = krn.replace('*I"Voice	*\n', "")
-            # krn = krn.replace("!!linebreak:original\n", "")
-            # krn = krn.replace("!!pagebreak:original\n", "")
-            # krn = krn.replace(" ", " <s> ")
-            # krn = krn.replace("·", "")
-            # krn = krn.replace("\t", " <t> ")
-            # krn = krn.replace("\n", " <b> ")
-            # krn = krn.split(" ")
 
             Y[idx] = (
-                ["<bos>"] + process_text(lines=krn, char_lvl=self.char_lvl) + ["<eos>"]
+                ["<bos>"] + process_text(lines=krn, char_lvl=self.char_lvl, medium_lvl=self.medium_lvl) + ["<eos>"]
             )
         return Y
 
