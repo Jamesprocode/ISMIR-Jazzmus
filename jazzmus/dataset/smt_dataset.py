@@ -25,6 +25,7 @@ def load_set(
 ):
     x = []
     y = []
+    paths = []
 
     # Read from the given split file
 
@@ -63,14 +64,17 @@ def load_set(
         y.append(krn_content)  # list of lines
         # y.append([content + "\n" for content in krn_content.split("\n")])
         x.append(img)
+        paths.append(img_sample)
 
-    return x, y
+    return x, y, paths
 
 
 def batch_preparation_img2seq(data):
     images = [sample[0] for sample in data]
     dec_in = [sample[1] for sample in data]
     gt = [sample[2] for sample in data]
+    paths = [sample[3] for sample in data]
+
 
     # print("Original shapes")
     # for i in images:
@@ -102,7 +106,7 @@ def batch_preparation_img2seq(data):
             np.asarray([char for char in seq[1:]])
         )
 
-    return X_train, decoder_input.long(), y.long()
+    return X_train, decoder_input.long(), y.long(), paths
 
 
 class OMRIMG2SEQDataset(Dataset):
@@ -110,6 +114,7 @@ class OMRIMG2SEQDataset(Dataset):
         self.teacher_forcing_error_rate = 0.2
         self.x = None
         self.y = None
+        self.path = None
         self.augment = augment
 
         super().__init__()
@@ -136,7 +141,7 @@ class OMRIMG2SEQDataset(Dataset):
 
         y = torch.from_numpy(np.asarray([self.w2i[token] for token in self.y[index]]))
         decoder_input = self.apply_teacher_forcing(y)
-        return x, decoder_input, y
+        return x, decoder_input, y, self.path[index]
 
     def get_max_hw(self):
         m_width = np.max([img.shape[1] for img in self.x])
@@ -190,7 +195,7 @@ class GrandStaffSingleSystem(OMRIMG2SEQDataset):
         # image parameters
         self.fixed_img_height = fixed_img_height
 
-        self.x, self.y = load_set(
+        self.x, self.y, self.path_to_images = load_set(
             data_path,
             split=split,
             fold=self.fold,
@@ -211,6 +216,7 @@ class GrandStaffSingleSystem(OMRIMG2SEQDataset):
     def __getitem__(self, index):
         x = self.x[index]
         y = self.y[index]
+        path = self.path_to_images[index]
 
         if self.augment:
             x = augment(x)
@@ -219,7 +225,7 @@ class GrandStaffSingleSystem(OMRIMG2SEQDataset):
 
         y = torch.from_numpy(np.asarray([self.w2i[token] for token in y]))
         decoder_input = self.apply_teacher_forcing(y)
-        return x, decoder_input, y
+        return x, decoder_input, y, path
 
     def __len__(self):
         return len(self.x)

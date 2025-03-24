@@ -57,6 +57,8 @@ def train(
 
         datamodule.width_reduction = model.width_reduction
 
+        tokenizer_type = gin.query_parameter("GtParser.character_lvl")
+
     elif model_type == "smt":
         # datamodule
         datamodule = GrandStaffDataset(fold=fold, batch_size=batch_size)
@@ -79,7 +81,7 @@ def train(
             num_dec_layers=8,
             fold=fold,
         )
-
+        tokenizer_type = gin.query_parameter("GrandStaffSingleSystem.char_lvl")
     else:
         raise ValueError(f"Model type {model_type} not recognized")
 
@@ -112,7 +114,7 @@ def train(
 
     my_logger = WandbLogger(
         project="jazzmus",
-        name=f"{model_type}_{fold}",
+        name=f"{model_type}_{'char_lvl' if tokenizer_type else 'word_lvl'}",
         log_model=True,
         group=f"{model_type}",
         save_dir="logs",
@@ -122,7 +124,7 @@ def train(
         logger=my_logger,
         callbacks=callbacks,
         max_epochs=epochs,
-        check_val_every_n_epoch=5,
+        check_val_every_n_epoch=1,
         deterministic=False,
         benchmark=False,
         precision="16-mixed",

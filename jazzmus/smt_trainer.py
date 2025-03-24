@@ -27,7 +27,7 @@ class SMT_Trainer(L.LightningModule):
         dim_ff=256,
         num_dec_layers=8,
         cp=None,
-        texture=None,
+        texture="jazz",
         fold=None,
         lr=1e-4,
     ):
@@ -85,18 +85,29 @@ class SMT_Trainer(L.LightningModule):
             x,
             di,
             y,
+            path_to_images
         ) = batch
         outputs = self.model(x, di[:, :-1], labels=y)
         loss = outputs.loss
         self.log("loss", loss, on_epoch=True, batch_size=1, prog_bar=True)
 
         if batch_idx == 0:
-            # log on wandb an image with the first batch
-            # Stack all images in the batch vertically
-            stacked_images = torch.cat([x[i] for i in range(x.shape[0])], dim=-2)  # dim=-2 is height dimension
+            # Create a wandb Table to log images with their paths
+            table = wandb.Table(columns=["image", "path"])
+
+            for i in range(x.shape[0]):
+                image_tensor = x[i].squeeze().cpu()
+                image_np = image_tensor.numpy()
+
+                # Add image and its corresponding path to the table
+                table.add_data(
+                    wandb.Image(image_np),
+                    path_to_images[i]
+                )
+
+            # Log the table to wandb
             self.logger.experiment.log({
-                "input_images": wandb.Image(stacked_images.squeeze().cpu().numpy(), 
-                                        caption=f"Input images - Epoch {self.current_epoch}")
+                f"Input batch - Epoch {self.current_epoch}": table
             })
 
         return loss
@@ -106,6 +117,7 @@ class SMT_Trainer(L.LightningModule):
             x,
             di,
             y,
+            path_to_images
         ) = val_batch
 
         predicted_sequence, _ = self.model.predict(input=x)
