@@ -9,6 +9,7 @@ from jazzmus.model.smt.modeling_smt import SMTModelForCausalLM
 from torchinfo import summary
 from jazzmus.dataset.tokenizer import untokenize
 import gin
+import wandb
 
 @gin.configurable
 class SMT_Trainer(L.LightningModule):
@@ -79,7 +80,7 @@ class SMT_Trainer(L.LightningModule):
     def forward(self, input, last_preds):
         return self.model(input, last_preds)
 
-    def training_step(self, batch):
+    def training_step(self, batch, batch_idx):
         (
             x,
             di,
@@ -89,9 +90,18 @@ class SMT_Trainer(L.LightningModule):
         loss = outputs.loss
         self.log("loss", loss, on_epoch=True, batch_size=1, prog_bar=True)
 
+        if batch_idx == 0:
+            # log on wandb an image with the first batch
+            # Stack all images in the batch vertically
+            stacked_images = torch.cat([x[i] for i in range(x.shape[0])], dim=-2)  # dim=-2 is height dimension
+            self.logger.experiment.log({
+                "input_images": wandb.Image(stacked_images.squeeze().cpu().numpy(), 
+                                        caption=f"Input images - Epoch {self.current_epoch}")
+            })
+
         return loss
 
-    def validation_step(self, val_batch, metric_name="val"):
+    def validation_step(self, val_batch, batch_idx):
         (
             x,
             di,
