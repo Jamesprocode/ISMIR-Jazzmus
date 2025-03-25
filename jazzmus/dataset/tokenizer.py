@@ -10,7 +10,7 @@ def process_text(lines, char_lvl: bool = False, medium_lvl: bool = False):
         # remove the X character as it does not have graphical impact
         # TODO remove this and modify the dataset
         line = line.replace("X", "")
-        if "=" in line:
+        if line[0].isdigit() or "=" in line:
             piece_started = True
 
         # Skip reserved lines
@@ -53,20 +53,25 @@ def middle_level_split(line, piece_started):
     else:
         # last token from line.split("\t") is the chord, the rest are notes
         tokens = line.split("\t")
-        notes = tokens[:-1]
-        chord = tokens[-1]
-        tokens = []
-        for note in notes:
-            tokens.extend(note_split(note))
-            tokens.append("<t>")
-        tokens.extend(chord_split(chord))
-        tokens.append("<n>")
+        if len(tokens) == 1:
+            # single spline, only notes
+            tokens = note_split(tokens[0])
+            tokens.append("<n>")
+        else:
+            notes = tokens[:-1]
+            chord = tokens[-1]
+            tokens = []
+            for note in notes:
+                tokens.extend(note_split(note))
+                tokens.append("<t>")
+            tokens.extend(chord_split(chord))
+            tokens.append("<n>")
     return tokens
 
 
 def note_split(note_string):
-    if note_string == ".":
-        tokens = ["."]
+    if note_string in [".", "*v", "*^", "*"]:
+        tokens = [note_string]
     else:
         tokens = []
         # group in dedicated symbols every pitch letter, i.e., from [a,b,c,d,e,f,g], upper or lower case
@@ -83,23 +88,18 @@ def note_split(note_string):
                     tokens.append(current_pitch)
                     current_pitch = ""
                 tokens.append(char)
+        if current_pitch: # if the string ends with a pitch letter
+            tokens.append(current_pitch)
     return tokens
 
 def chord_split(chord_string):
-    if chord_string == ".":
-        tokens = ["."]
+    if chord_string in [".", "*v", "*^", "*"]:
+       tokens = [chord_string]
     else:
         # split chord string into root, type, a list of extensions, and bass
         root_string = chord_string.split(":")[0]
         root = []
-        if "#" in root_string:
-            root.append("<chord-pitch>" + root_string.split("#")[0])
-            root.append("#")
-        elif "-" in root_string:
-            root.append(root_string.split("-")[0])
-            root.append("-")
-        else:
-            root.append("<chord-pitch>" + root_string)
+        root.extend(process_chord_pitch(root_string))
         # separate # and - from root
         
         bass = chord_string.split("/")[1] if "/" in chord_string else "none"
@@ -110,7 +110,7 @@ def chord_split(chord_string):
             chord_type = chord_string.split(":")[1] if "/" not in chord_string else chord_string.split(":")[1].split("/")[0]
         # elements between parentheses in chord_types are extensions modifiers
         if "(" in chord_type:
-            extensions_full = chord_type.split("(")[1].split(")")[0]
+            extensions_full = chord_type.split("(")[1].split(")")[0].split(",")
         else:
             extensions_full = []
         extensions_single = []
@@ -119,9 +119,9 @@ def chord_split(chord_string):
             if "#" in ext:
                 extensions_single.append("#")
                 extensions_single.append("<chord-extension>" + ext.replace("#",""))
-            elif "-" in ext:
-                extensions_single.append("-")
-                extensions_single.append("<chord-extension>" + ext.replace("-",""))
+            elif "b" in ext:
+                extensions_single.append("b")
+                extensions_single.append("<chord-extension>" + ext.replace("b",""))
             else:
                 extensions_single.append("<chord-extension>" + ext)
             extensions_single.append(",")
@@ -138,18 +138,25 @@ def chord_split(chord_string):
             tokens.append(")")
         if bass!="none":
             tokens.append("/")
-            tokens.append(bass)
+            tokens.extend(process_chord_pitch(bass))
     return tokens
     
         
-
-
-
-
+def process_chord_pitch(root_string):
+    root = []
+    if "#" in root_string:
+        root.append("<chord-pitch>" + root_string.split("#")[0])
+        root.append("#")
+    elif "-" in root_string:
+        root.append(root_string.split("-")[0])
+        root.append("b")
+    else:
+        root.append("<chord-pitch>" + root_string)
+    return root
 
 
 
 
 def untokenize(tokens):
     """Untokenizes a list of tokens into a string."""
-    return "".join(tokens).replace("<t>", "\t").replace("<n>", "\n").replace("<s>", " ")
+    return "".join(tokens).replace("<t>", "\t").replace("<n>", "\n").replace("<s>", " ").replace("<chord-pitch>", "").replace("<chord-extension>", "")
