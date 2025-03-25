@@ -4,6 +4,7 @@ import numpy as np
 from torch.nn.init import xavier_uniform_
 from transformers import ConvNextConfig, ConvNextModel, PreTrainedModel
 from transformers.modeling_outputs import CausalLMOutputWithCrossAttentions
+from einops import rearrange
 
 from .configuration_smt import SMTConfig
 
@@ -273,7 +274,7 @@ class Decoder(nn.Module):
         else:
             cache = None
         
-        num_tokens_to_keep = num_pred if self.dec_attn_win is None else min([num_pred + self.dec_attn_win - 1, pos_tokens.size(0), token_len[0]])
+        num_tokens_to_keep = num_pred if self.dec_attn_win is None else min([num_pred + self.dec_attn_win - 1, pos_tokens.size(0), token_len])
         pos_tokens = pos_tokens[-num_tokens_to_keep:]
 
         target_mask = self.generate_target_mask(tokens.size(1), device=device)
@@ -308,8 +309,8 @@ class Decoder(nn.Module):
     def generate_token_mask(self, token_len, total_size, device):
         batch_size, len_mask = total_size
         mask = torch.zeros((batch_size, len_mask), dtype=torch.bool, device=device)
-        for i, len_ in enumerate(token_len):
-            mask[i, :len_] = False
+        # for i, len_ in enumerate(token_len):
+        mask[:, :token_len] = False
         
         return mask
     
@@ -329,7 +330,6 @@ class SMTModelForCausalLM(PreTrainedModel):
 
     def __init__(self, config:SMTConfig):
         super().__init__(config)
-        #self.encoder = ConvNextEncoder(config.in_channels, stem_features=64, depths=[4,6], widths=[128, 256])
         next_config = ConvNextConfig(
             num_channels=config.in_channels,
             num_stages=config.enc_stages,
@@ -348,21 +348,24 @@ class SMTModelForCausalLM(PreTrainedModel):
         self.w2i = config.w2i
         self.i2w = config.i2w
         self.maxlen = int(config.maxlen)
+        self.apply(self._init_weights)
     
     def forward_encoder(self, x):
         return self.encoder(pixel_values=x).last_hidden_state
     
     def forward_decoder(self, encoder_output, y_pred):
         b, _, _, _ = encoder_output.size()
-        reduced_size = [s.shape[:2] for s in encoder_output]
-        ylens = [len(sample) for sample in y_pred]
+        # reduced_size = [s.shape[:2] for s in encoder_output]
+        reduced_size = encoder_output.shape[1:3]
+        ylens = y_pred.shape[1]
 
         pos_features = self.positional_2D(encoder_output)
-        features = torch.flatten(encoder_output, start_dim=2, end_dim=3).permute(2,0,1)
-        enhanced_features = features
-        enhanced_features = torch.flatten(pos_features, start_dim=2, end_dim=3).permute(2,0,1)
-        output, predictions, _, _, weights = self.decoder(features, enhanced_features, y_pred[:, :], reduced_size, 
-                                                           [max(ylens) for _ in range(b)], encoder_output.size(), 
+        # features = torch.flatten(encoder_output, start_dim=2, end_dim=3).permute(2,0,1)
+        features = rearrange(encoder_output, 'b c h w -> (h w) b c ')
+        # enhanced_features = torch.flatten(pos_features, start_dim=2, end_dim=3).permute(2,0,1)
+        pos_features = rearrange(pos_features, 'b c h w -> (h w) b c ')
+        output, predictions, _, _, weights = self.decoder(features, pos_features, y_pred, reduced_size, 
+                                                           ylens, encoder_output.size(), 
                                                            cache=None, keep_all_weights=True)
         return SMTOutput(
             logits=predictions,
@@ -383,7 +386,7 @@ class SMTModelForCausalLM(PreTrainedModel):
     
     def predict(self, input, convert_to_str=False):
         predicted_sequence = torch.from_numpy(np.asarray([self.w2i['<bos>']])).to(input.device).unsqueeze(0)
-        encoder_output = self.forward_encoder(input)
+        encoder_output = self.forward_encoder(input.unsqueeze(0))
         text_sequence = []
         for i in range(self.maxlen - predicted_sequence.shape[-1]):
             predictions = self.forward_decoder(encoder_output, predicted_sequence.long())
@@ -396,3 +399,22 @@ class SMTModelForCausalLM(PreTrainedModel):
             text_sequence.append(self.i2w[predicted_token])
         
         return text_sequence, predictions
+    
+
+    @staticmethod
+    def _init_weights(module: nn.Module):
+        if isinstance(module, (nn.Linear, nn.Conv1d)):
+            torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
+            if module.bias is not None:
+                torch.nn.init.zeros_(module.bias)
+        elif isinstance(module, nn.Conv2d):
+            torch.nn.init.kaiming_normal_(
+                module.weight, mode="fan_out", nonlinearity="relu"
+            )
+            if module.bias is not None:
+                torch.nn.init.zeros_(module.bias)
+        elif isinstance(module, nn.Embedding):
+            torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
+            if module.padding_idx is not None:
+                with torch.no_grad():
+                    module.weight[module.padding_idx].fill_(0)
