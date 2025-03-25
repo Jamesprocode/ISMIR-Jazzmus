@@ -5,7 +5,7 @@ import gin
 import torch
 
 from lightning.pytorch import Trainer, seed_everything
-from lightning.pytorch.callbacks import EarlyStopping, ModelCheckpoint
+from lightning.pytorch.callbacks import EarlyStopping, ModelCheckpoint, LearningRateMonitor
 from lightning.pytorch.loggers import WandbLogger
 
 from jazzmus.dataset.ctc_datamodule import CTCDataModule
@@ -24,8 +24,10 @@ def train(
     model_type: str = None,
     epochs: int = 300,
     patience: int = 10,
-    batch_size: int = 16,
+    batch_size: int = 2,
+    accumulate_grad_batches: int = 16,
     config: str = None,
+    lr: float = 1e-3,
 ):
     gc.collect()
     torch.cuda.empty_cache()
@@ -43,8 +45,7 @@ def train(
     print(f"\tEpochs: {epochs}")
     print(f"\tPatience: {patience}")
     print(f"\tBatch size: {batch_size}")
-    # print(f"\tSplit encoding: {split_enc}")
-    # print(f"\tHarmony processing: {harm_proc}")
+    print(f"\tLearning rate: {lr}")
 
     if model_type == "crnn":
         datamodule = CTCDataModule(fold, batch_size)
@@ -52,12 +53,11 @@ def train(
         w2i, i2w = datamodule.get_w2i_and_i2w()
 
         model = CTCTrainedCRNN(
-            w2i=w2i, i2w=i2w, max_image_len=datamodule.get_max_img_len(), fold=fold
+            w2i=w2i, i2w=i2w, max_image_len=datamodule.get_max_img_len(), fold=fold, lr=lr
         )
 
         datamodule.width_reduction = model.width_reduction
-
-        tokenizer_type = gin.query_parameter("GtParser.character_lvl")
+        tokenizer_type = gin.query_parameter("GtParser.tokenizer_type")
 
     elif model_type == "smt":
         # datamodule
@@ -80,8 +80,10 @@ def train(
             dim_ff=256,
             num_dec_layers=8,
             fold=fold,
+            lr=lr,
         )
-        tokenizer_type = gin.query_parameter("GrandStaffSingleSystem.char_lvl")
+        tokenizer_type = gin.query_parameter("GrandStaffSingleSystem.tokenizer_type")
+        
     else:
         raise ValueError(f"Model type {model_type} not recognized")
 
@@ -89,7 +91,7 @@ def train(
         ModelCheckpoint(
             dirpath=f"weights/{model_type}",
             filename=f"{model_type}_{fold}",
-            monitor="val_ser",
+            monitor="val/ser",
             verbose=True,
             save_top_k=1,
             save_last=False,
@@ -99,22 +101,23 @@ def train(
             every_n_epochs=5,
             save_on_train_epoch_end=False,
         ),
-        EarlyStopping(
-            monitor="val_ser",
-            min_delta=0.01,
-            patience=patience,
-            verbose=True,
-            mode="min",
-            strict=True,
-            check_finite=True,
-            divergence_threshold=100.0,
-            check_on_train_epoch_end=False,
-        ),
+        LearningRateMonitor(logging_interval="step"),
+        # EarlyStopping(
+        #     monitor="val_ser",
+        #     min_delta=0.01,
+        #     patience=patience,
+        #     verbose=True,
+        #     mode="min",
+        #     strict=True,
+        #     check_finite=True,
+        #     divergence_threshold=100.0,
+        #     check_on_train_epoch_end=False,
+        # ),
     ]
 
     my_logger = WandbLogger(
         project="jazzmus",
-        name=f"{model_type}_{'char_lvl' if tokenizer_type else 'word_lvl'}",
+        name=f"{model_type}_{tokenizer_type}_lvl_lr{lr}",
         log_model=True,
         group=f"{model_type}",
         save_dir="logs",
@@ -129,7 +132,7 @@ def train(
         benchmark=False,
         precision="16-mixed",
         accelerator="auto",
-        accumulate_grad_batches=8,
+        accumulate_grad_batches=accumulate_grad_batches,
         fast_dev_run=debug,
     )
 
