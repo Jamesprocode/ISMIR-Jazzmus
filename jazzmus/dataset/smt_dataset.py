@@ -178,8 +178,7 @@ class GrandStaffSingleSystem(OMRIMG2SEQDataset):
         split,
         fold,
         augment=False,
-        char_lvl=False,
-        medium_lvl=False,
+        tokenizer_type="word",
         fixed_img_height=256,
     ) -> None:
         self.augment = augment
@@ -187,10 +186,7 @@ class GrandStaffSingleSystem(OMRIMG2SEQDataset):
         self.fold = fold
 
         # tokenization
-        self.char_lvl = char_lvl
-        if medium_lvl:
-            assert not char_lvl, "Cannot have both middle and char level"
-        self.medium_lvl = medium_lvl
+        self.tokenizer_type = tokenizer_type
 
         # image parameters
         self.fixed_img_height = fixed_img_height
@@ -234,7 +230,7 @@ class GrandStaffSingleSystem(OMRIMG2SEQDataset):
         for idx, krn in enumerate(Y):
 
             Y[idx] = (
-                ["<bos>"] + process_text(lines=krn, char_lvl=self.char_lvl, medium_lvl=self.medium_lvl) + ["<eos>"]
+                ["<bos>"] + process_text(lines=krn, tokenizer_type=self.tokenizer_type) + ["<eos>"]
             )
         return Y
 
@@ -245,6 +241,12 @@ class GrandStaffDataset(LightningDataModule):
         self, data_path="", vocab_name="", batch_size=1, num_workers=4, fold=0
     ) -> None:
         super().__init__()
+        print("Initializing datamodule with parameters:")
+        print(f"\tData path: {data_path}")
+        print(f"\tVocabulary name: {vocab_name}")
+        print(f"\tBatch size: {batch_size}")
+        print(f"\tNumber of workers: {num_workers}")
+        print(f"\tFold: {fold}")
         self.data_path = data_path
         self.vocab_name = vocab_name
         self.batch_size = batch_size
