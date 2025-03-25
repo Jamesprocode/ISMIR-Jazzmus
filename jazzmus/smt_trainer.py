@@ -11,6 +11,8 @@ from jazzmus.dataset.tokenizer import untokenize
 import gin
 import wandb
 
+import transformers
+
 @gin.configurable
 class SMT_Trainer(L.LightningModule):
     def __init__(
@@ -30,6 +32,8 @@ class SMT_Trainer(L.LightningModule):
         texture="jazz",
         fold=None,
         lr=1e-4,
+        warmup_steps=1000,
+        weight_decay=0.01,
     ):
         super().__init__()
         self.config = SMTConfig(
@@ -52,6 +56,8 @@ class SMT_Trainer(L.LightningModule):
         self.texture = texture
         self.fold = fold
         self.lr = lr
+        self.warmup_steps = warmup_steps
+        self.weight_decay = weight_decay
 
         self.preds = []
         self.grtrs = []
@@ -68,19 +74,38 @@ class SMT_Trainer(L.LightningModule):
         )
 
     def configure_optimizers(self):
-        optimizer = torch.optim.Adam(
-            list(self.model.encoder.parameters())
-            + list(self.model.decoder.parameters()),
-            lr=self.lr,  # Peak LR
-            amsgrad=False,
+        optimizer = torch.optim.AdamW
+        # only decay 2+-dimensional tensors, to exclude biases and norms
+        # (filtering on dimensionality idea taken from Kaparthy's nano-GPT)
+        params = [
+            {
+                "params": (
+                    p for p in self.parameters() if p.requires_grad and p.ndim >= 2
+                ),
+                "weight_decay": self.weight_decay,
+            },
+            {
+                "params": (
+                    p for p in self.parameters() if p.requires_grad and p.ndim <= 1
+                ),
+                "weight_decay": 0,
+            },
+        ]
+
+        optimizer = optimizer(params, lr=self.lr)
+
+        self.lr_scheduler = transformers.get_cosine_schedule_with_warmup(
+            optimizer, self.warmup_steps, self.trainer.estimated_stepping_batches
         )
 
-        return optimizer
+        result = dict(optimizer=optimizer)
+        result["lr_scheduler"] = {"scheduler": self.lr_scheduler, "interval": "step"}
+        return result
 
     def forward(self, input, last_preds):
         return self.model(input, last_preds)
-
-    def training_step(self, batch, batch_idx):
+    
+    def compute_loss(self, batch):
         (
             x,
             di,
@@ -89,7 +114,19 @@ class SMT_Trainer(L.LightningModule):
         ) = batch
         outputs = self.model(x, di[:, :-1], labels=y)
         loss = outputs.loss
-        self.log("loss", loss, on_epoch=True, batch_size=1, prog_bar=True)
+        return loss
+
+    def training_step(self, batch, batch_idx):
+        (
+            x,
+            di,
+            y,
+            path_to_images
+        ) = batch
+
+        loss = self.compute_loss(batch)
+
+        self.log("train/loss", loss, on_epoch=True, batch_size=x.shape[0], prog_bar=True)
 
         if batch_idx == 0:
             # Create a wandb Table to log images with their paths
@@ -112,82 +149,115 @@ class SMT_Trainer(L.LightningModule):
 
         return loss
 
-    def validation_step(self, val_batch, batch_idx):
+    def validation_step(self, batch, batch_idx):
         (
             x,
             di,
             y,
             path_to_images
-        ) = val_batch
+        ) = batch
+        loss = self.compute_loss(batch)
+        self.log("val/loss", loss, on_epoch=True, batch_size=x.shape[0], prog_bar=True)
 
-        predicted_sequence, _ = self.model.predict(input=x)
+        self.predict_output(batch)
 
-        dec = untokenize(predicted_sequence)
-        gt = untokenize([self.model.i2w[token.item()] for token in y.squeeze(0)[:-1]])
+    def predict_output(self, batch):
+        (
+            x,
+            di,
+            y,
+            path_to_images
+        ) = batch
 
-        # dec = "".join(predicted_sequence)
-        # dec = dec.replace("<t>", "\t")
-        # dec = dec.replace("<b>", "\n")
-        # dec = dec.replace("<s>", " ")
+        for x_single,y_single in zip(x,y):
+            predicted_sequence, _ = self.model.predict(input=x_single)
 
-        # gt = "".join([self.model.i2w[token.item()] for token in y.squeeze(0)[:-1]])
-        # gt = gt.replace("<t>", "\t")
-        # gt = gt.replace("<b>", "\n")
-        # gt = gt.replace("<s>", " ")
+            dec = untokenize(predicted_sequence)
+            gt = untokenize([self.model.i2w[token.item()] for token in y_single[:-1]])
 
-        self.preds.append(dec)
-        self.grtrs.append(gt)
+            self.preds.append(dec)
+            self.grtrs.append(gt)
 
-    def on_validation_epoch_end(self, metric_name="val") -> None:
-        cer, ser, ler = compute_poliphony_metrics(self.preds, self.grtrs)
-
-        random_index = random.randint(0, len(self.preds) - 1)
-        predtoshow = self.preds[random_index]
-        gttoshow = self.grtrs[random_index]
-        print(f"\n[Prediction] - {predtoshow}")
-        print(f"\n[GT] - {gttoshow}")
-
+    def compute_log_metrics(self, preds, grtrs, step="val"):
+        cer, ser, ler = compute_poliphony_metrics(preds, grtrs)
+        
         self.log(
-            f"{metric_name}_cer",
+            f"{step}/cer",
             100 if cer > 100 else cer,
             on_epoch=True,
-            prog_bar=True,
+            prog_bar=False,
         )
         self.log(
-            f"{metric_name}_ser",
+            f"{step}/ser",
             100 if ser > 100 else ser,
             on_epoch=True,
             prog_bar=True,
         )
         self.log(
-            f"{metric_name}_ler",
+            f"{step}/ler",
             100 if ler > 100 else ler,
             on_epoch=True,
-            prog_bar=True,
+            prog_bar=False,
         )
 
-        if metric_name == "test":
-            import os
 
-            os.makedirs(f"test_predictions/{self.texture}/{self.fold}/", exist_ok=True)
-            # save all the test predictions in a folder with pairs of prediction and ground truth .kern files
-            for i in range(len(self.preds)):
-                with open(
-                    f"test_predictions/{self.texture}/{self.fold}/{i}_pred.kern", "w"
-                ) as f:
-                    f.write(self.preds[i])
-                with open(
-                    f"test_predictions/{self.texture}/{self.fold}/{i}_gt.kern", "w"
-                ) as f:
-                    f.write(self.grtrs[i])
+    def on_validation_epoch_end(self) -> None:
+        self.compute_log_metrics(self.preds, self.grtrs, step="val")
+
+        # random_index = random.randint(0, len(self.preds) - 1)
+        random_index = 0 # always log the first, so we can see ho thing evolve over time
+        predtoshow = self.preds[random_index]
+        gttoshow = self.grtrs[random_index]
+        # print(f"\n[Prediction] - {predtoshow}")
+        # print(f"\n[GT] - {gttoshow}")
+
+        # Create a wandb Table for predictions
+        table = wandb.Table(columns=["Prediction", "Ground Truth"])
+        table.add_data(predtoshow, gttoshow)
+        
+        # Log both table and text to wandb
+        self.logger.experiment.log({
+            f"val/predictions_table": table,
+            f"val/example_prediction": wandb.Html(f"""
+                <div style='white-space: pre-wrap;'>
+                <b>Prediction:</b>\n{predtoshow}\n\n
+                <b>Ground Truth:</b>\n{gttoshow}
+                </div>
+            """)
+        })
 
         self.preds = []
         self.grtrs = []
+        
 
-        return ser
+    def test_step(self, batch, batch_idx):
+        (
+            x,
+            di,
+            y,
+            path_to_images
+        ) = batch
+        loss = self.compute_loss(batch)
+        self.log("test/loss", loss, on_epoch=True, batch_size=x.shape[0])
 
-    def test_step(self, test_batch):
-        return self.validation_step(test_batch, metric_name="test")
+        self.predict_output(batch)
 
     def on_test_epoch_end(self) -> None:
-        return self.on_validation_epoch_end("test")
+        self.compute_log_metrics(self.preds, self.grtrs, step="test")
+    
+        import os
+
+        os.makedirs(f"test_predictions/{self.texture}/{self.fold}/", exist_ok=True)
+        # save all the test predictions in a folder with pairs of prediction and ground truth .kern files
+        for i in range(len(self.preds)):
+            with open(
+                f"test_predictions/{self.texture}/{self.fold}/{i}_pred.kern", "w"
+            ) as f:
+                f.write(self.preds[i])
+            with open(
+                f"test_predictions/{self.texture}/{self.fold}/{i}_gt.kern", "w"
+            ) as f:
+                f.write(self.grtrs[i])
+
+        self.preds = []
+        self.grtrs = []
