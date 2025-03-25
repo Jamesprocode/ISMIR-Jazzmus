@@ -12,5 +12,5 @@ make_vocabulary.pathToSave = "data/jazzmus_dataset_regions/vocab"
 
 
 # ENCODING
-GtParser.character_lvl = True # this is for crnn
-GrandStaffSingleSystem.char_lvl = True # this is for smt
+GtParser.tokenizer_type = "character" # this is for crnn
+GrandStaffSingleSystem.tokenizer_type = "character" # this is for smt

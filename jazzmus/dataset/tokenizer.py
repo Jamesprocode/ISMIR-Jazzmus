@@ -1,5 +1,5 @@
 
-def process_text(lines, char_lvl: bool = False, medium_lvl: bool = False):
+def process_text(lines, tokenizer_type: str = "word"):
     """Reads and processes the input file with text preprocessing and optional character-level or middle level tokenization."""
 
     reserved_lines = {"!!linebreak", "!!pagebreak", "*I", "*F:", "!LO"}
@@ -17,20 +17,22 @@ def process_text(lines, char_lvl: bool = False, medium_lvl: bool = False):
         if any(reserved in line for reserved in reserved_lines):
             continue
 
-        if medium_lvl:
+        if tokenizer_type == "medium":
             tokens.extend(middle_level_split(line.replace("\n", ""), piece_started))
         else:
             line_elements = line.replace("\n", "").split("\t")
 
-            if char_lvl:
+            if tokenizer_type == "character":
                 for element in line_elements:
                     for char in element:
                         tokens.append(char)
                     tokens.append("<t>")
-            else:
+            elif tokenizer_type == "word":
                 for element in line_elements:
                     tokens.append(element)
                     tokens.append("<t>")
+            else:
+                raise ValueError(f"Unknown tokenizer type: {tokenizer_type}")
 
             # Remove the last tab token
             if tokens[-1] == "<t>":

@@ -2,10 +2,10 @@
 import gin
 @gin.configurable
 class GtParser:
-    def __init__(self, split_enc=False, process_harm=False, character_lvl=False) -> None:
+    def __init__(self, split_enc=False, process_harm=False, tokenizer_type="word") -> None:
         self.split_enc = split_enc
         self.process_harm = process_harm
-        self.character_lvl = character_lvl
+        self.tokenizer_type = tokenizer_type
 
     def _get_character_lvl(self, lines):
         # split each character into a token
@@ -31,7 +31,7 @@ class GtParser:
         from jazzmus.dataset.tokenizer import process_text
         with open(src_file, "r", encoding="utf-8") as f:
             lines = f.read().splitlines()
-            return process_text(lines, self.character_lvl)
+            return process_text(lines, self.tokenizer_type)
         # # read file and get lines
         # # print(f"DEBUG: src_file == {src_file}")
         # reserved_lines = ["!!linebreak", "!!pagebreak", '*I"Voice']
@@ -105,6 +105,6 @@ if __name__ == "__main__":
     print("Raw:")
     print(transcript)
     print("Character level:")
-    gt_parser_char = GtParser(character_lvl=True)
+    gt_parser_char = GtParser(tokenizer_type="character")
     transcript = gt_parser_char.convert(example_file)
     print(transcript)

@@ -18,5 +18,5 @@ SMTConfig.enc_depths = [3, 9]
 
 
 # ENCODING
-GtParser.character_lvl = True # this is for crnn
-GrandStaffSingleSystem.char_lvl = True # this is for smt
+GtParser.tokenizer_type = "character" # this is for crnn
+GrandStaffSingleSystem.tokenizer_type = "character" # this is for smt
