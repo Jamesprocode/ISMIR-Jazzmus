@@ -1,6 +1,7 @@
 data/*
 vocab/*
 test_predictions/*
+random_batch.pdf
 
 # weights folder
 weights/*
