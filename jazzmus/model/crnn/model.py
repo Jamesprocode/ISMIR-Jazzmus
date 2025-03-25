@@ -23,6 +23,7 @@ class CTCTrainedCRNN(LightningModule):
         freeze=False,
         model_loaded=None,
         test_vocab=None,
+        lr=1e-3,
     ):
         super().__init__()
         self.save_hyperparameters()
@@ -48,6 +49,8 @@ class CTCTrainedCRNN(LightningModule):
         self.names = []
         self.n_fold = fold
 
+        self.lr = lr
+
     def load_test_vocab(self, test_vocab):
         if test_vocab:
             with open(test_vocab) as f:
@@ -60,7 +63,7 @@ class CTCTrainedCRNN(LightningModule):
     def configure_optimizers(self):
         return torch.optim.Adam(
             filter(lambda p: p.requires_grad, self.model.parameters()),
-            lr=1e-3,
+            lr=self.lr,
             weight_decay=1e-6,
         )
 
@@ -75,7 +78,7 @@ class CTCTrainedCRNN(LightningModule):
         y_hat = y_hat.permute(1, 0, 2)
 
         loss = self.compute_ctc_loss(y_hat, y, xl, yl)
-        self.log("train_loss", loss, prog_bar=True, logger=True, on_epoch=True)
+        self.log("train/loss", loss, prog_bar=True, logger=True, on_epoch=True)
         return loss
 
     def ctc_greedy_decoder(self, y_pred, i2w):
@@ -140,7 +143,7 @@ class CTCTrainedCRNN(LightningModule):
     ):
         metrics = compute_metrics(y_true=self.Y, y_pred=self.Y_hat)
         for k, v in metrics.items():
-            self.log(f"{name}_{k}", v, prog_bar=True, logger=True, on_epoch=True)
+            self.log(f"{name}/{k}", v, prog_bar=True, logger=True, on_epoch=True)
 
         if print_random_samples:
             index = random.randint(0, len(self.Y) - 1)
