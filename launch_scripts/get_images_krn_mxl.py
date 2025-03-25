@@ -33,22 +33,23 @@ def process_single_json(
             )
         # download the image
         response = requests.get(image_url)
-        # Use context manager to catch the DecompressionBombWarning occurs
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter("always", Image.DecompressionBombWarning)
+        # # Use context manager to catch the DecompressionBombWarning occurs
+        # with warnings.catch_warnings(record=True) as w:
+        #     warnings.simplefilter("always", Image.DecompressionBombWarning)
 
-            img = Image.open(BytesIO(response.content))
+        #     img = Image.open(BytesIO(response.content))
 
-            # Check if DecompressionBombWarning was issued
-            if any(
-                issubclass(warning.category, Image.DecompressionBombWarning)
-                for warning in w
-            ):
-                print(f"DecompressionBombWarning for file: {f}")
-                # downscale the image by a factor of 2
-                img.thumbnail((img.width // 2, img.height // 2))
+        #     # Check if DecompressionBombWarning was issued
+        #     if any(
+        #         issubclass(warning.category, Image.DecompressionBombWarning)
+        #         for warning in w
+        #     ):
+        #         print(f"DecompressionBombWarning for file: {f}")
+        #         # downscale the image by a factor of 2
+        #         img.thumbnail((img.width // 2, img.height // 2))
 
         # convert it to jpg, IIIF server automatically converts to jpg when storing info
+        img = Image.open(BytesIO(response.content))
         img.save(image_path, "JPEG")
 
     # export kern
