@@ -1,4 +1,5 @@
 from jazzmus.metrics import levenshtein
+from multiprocessing import Pool
 
 
 def parse_krn_content(krn, ler_parsing=False, cer_parsing=False):
@@ -62,16 +63,17 @@ def compute_poliphony_metrics(hyp_array, gt_array):
         hyp_cer.append(parse_krn_content(h_string, ler_parsing=False, cer_parsing=True))
         gt_cer.append(parse_krn_content(gt_string, ler_parsing=False, cer_parsing=True))
 
-    acc_ed_dist = 0
-    acc_len = 0
 
-    cer = 0
-    ser = 0
-    ler = 0
+    # acc_ed_dist = 0
+    # acc_len = 0
 
-    for h, g in zip(hyp_cer, gt_cer):
-        acc_ed_dist += levenshtein(h, g)
-        acc_len += len(g)
+    # cer = 0
+    # ser = 0
+    # ler = 0
+
+    # for h, g in zip(hyp_cer, gt_cer):
+    #     acc_ed_dist += levenshtein(h, g)
+    #     acc_len += len(g)
 
     cer = compute_metric(hyp_cer, gt_cer)
     ser = compute_metric(hyp_ser, gt_ser)
