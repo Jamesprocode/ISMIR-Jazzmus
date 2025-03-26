@@ -22,7 +22,7 @@ def train(
     debug: bool = False,
     fold: int = 0,
     model_type: str = None,
-    epochs: int = 300,
+    epochs: int = 200,
     patience: int = 10,
     batch_size: int = 2,
     accumulate_grad_batches: int = 16,
