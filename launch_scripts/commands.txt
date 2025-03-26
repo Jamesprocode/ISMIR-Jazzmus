@@ -1,0 +1,15 @@
+CUDA_VISIBLE_DEVICES=3 python launch_scripts/train.py -fold 0 -config config/pretrained_syn_word.gin -model_type smt -batch_size 16 -accumulate_grad_batches 4 -lr 0.0005 -epochs 100
+CUDA_VISIBLE_DEVICES=3 python launch_scripts/train.py -fold 0 -config config/pretrained_syn_character.gin -model_type smt -batch_size 16 -accumulate_grad_batches 4 -lr 0.0005 -epochs 100
+CUDA_VISIBLE_DEVICES=3 python launch_scripts/train.py -fold 0 -config config/pretrained_syn_medium.gin -model_type smt -batch_size 16 -accumulate_grad_batches 4 -lr 0.0005 -epochs 100
+
+CUDA_VISIBLE_DEVICES=0 python launch_scripts/train.py -fold 0 -config config/pretrained_word.gin -model_type smt -batch_size 16 -accumulate_grad_batches 4 -lr 0.0005 -epochs 100
+CUDA_VISIBLE_DEVICES=0 python launch_scripts/train.py -fold 0 -config config/pretrained_character.gin -model_type smt -batch_size 16 -accumulate_grad_batches 4 -lr 0.0005 -epochs 100
+CUDA_VISIBLE_DEVICES=0 python launch_scripts/train.py -fold 0 -config config/pretrained_medium.gin -model_type smt -batch_size 16 -accumulate_grad_batches 4 -lr 0.0005 -epochs 100
+
+CUDA_VISIBLE_DEVICES=5 python launch_scripts/train.py -fold 0 -config config/syn_word.gin -model_type smt -batch_size  8 -accumulate_grad_batches 8 -lr 0.0005 -epochs 100
+CUDA_VISIBLE_DEVICES=5 python launch_scripts/train.py -fold 0 -config config/syn_character.gin -model_type smt -batch_size 8 -accumulate_grad_batches 8 -lr 0.0005 -epochs 100
+CUDA_VISIBLE_DEVICES=5 python launch_scripts/train.py -fold 0 -config config/syn_medium.gin -model_type smt -batch_size 8 -accumulate_grad_batches 8 -lr 0.0005 -epochs 100
+
+CUDA_VISIBLE_DEVICES=6 python launch_scripts/train.py -fold 0 -config config/word.gin -model_type smt -batch_size  8 -accumulate_grad_batches 8 -lr 0.0005 -epochs 100
+CUDA_VISIBLE_DEVICES=6 python launch_scripts/train.py -fold 0 -config config/character.gin -model_type smt -batch_size 8 -accumulate_grad_batches 8 -lr 0.0005 -epochs 100
+CUDA_VISIBLE_DEVICES=6 python launch_scripts/train.py -fold 0 -config config/medium.gin -model_type smt -batch_size 8 -accumulate_grad_batches 8 -lr 0.0005 -epochs 100

@@ -129,6 +129,7 @@ def train(
         wandb_name += "_pretrained"
     if synthetic:
         wandb_name += "_syn"
+    wandb_name += f"_e{epochs}"
 
     my_logger = WandbLogger(
         project="jazzmus",
