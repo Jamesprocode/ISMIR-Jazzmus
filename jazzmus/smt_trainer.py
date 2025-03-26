@@ -11,6 +11,8 @@ from jazzmus.dataset.tokenizer import untokenize
 import gin
 import wandb
 
+from torch.nn import Conv1d
+
 import transformers
 
 @gin.configurable
@@ -32,8 +34,9 @@ class SMT_Trainer(L.LightningModule):
         texture="jazz",
         fold=None,
         lr=1e-4,
-        warmup_steps=1000,
+        warmup_steps=150,
         weight_decay=0.01,
+        load_pretrained = False
     ):
         super().__init__()
         self.config = SMTConfig(
@@ -51,7 +54,17 @@ class SMT_Trainer(L.LightningModule):
             num_dec_layers=num_dec_layers,
             use_flash_attn=True,
         )
-        self.model = SMTModelForCausalLM(self.config)
+        if load_pretrained:
+            self.model = SMTModelForCausalLM.from_pretrained("antoniorv6/smt-grandstaff")
+            # substitute the last layer with a new one of the correct size
+            self.model.decoder.out_layer = Conv1d(d_model, out_categories, kernel_size=1)
+            # update other config
+            unpretrained_model = SMTModelForCausalLM(self.config)
+            self.model.i2w = unpretrained_model.i2w.copy()
+            self.model.w2i = unpretrained_model.w2i.copy()
+            self.model.maxlen = unpretrained_model.maxlen
+        else:
+            self.model = SMTModelForCausalLM(self.config)
         self.padding_token = padding_token
         self.texture = texture
         self.fold = fold
@@ -123,7 +136,7 @@ class SMT_Trainer(L.LightningModule):
             y,
             path_to_images
         ) = batch
-
+        print(x.shape)
         loss = self.compute_loss(batch)
 
         self.log("train/loss", loss, on_epoch=True, batch_size=x.shape[0], prog_bar=True)
@@ -145,6 +158,12 @@ class SMT_Trainer(L.LightningModule):
             # Log the table to wandb
             self.logger.experiment.log({
                 f"Input batch - Epoch {self.current_epoch}": table
+            })
+
+            # log also an image of the batch of images vertically stacked
+            stacked_image = torch.cat([xx.squeeze().cpu() for xx in x], dim=0)
+            wandb.log({
+                f"Input batch image": wandb.Image(stacked_image.numpy())
             })
 
         return loss
