@@ -22,6 +22,7 @@ def load_set(
     reduce_ratio=1.0,
     fixed_size=None,
     fixed_img_height=256,
+    max_fix_img_width=None
 ):
     x = []
     y = []
@@ -53,6 +54,8 @@ def load_set(
             # keep the aspect ratio
             width = int(np.ceil(img.shape[1] * fixed_img_height / img.shape[0]))
             height = fixed_img_height
+            if max_fix_img_width is not None:
+                width = min(width, max_fix_img_width)
         elif img.shape[1] > 3056:
             width = int(np.ceil(3056 * reduce_ratio))
             height = int(np.ceil(max(img.shape[0], 256) * reduce_ratio))
@@ -80,8 +83,8 @@ def batch_preparation_img2seq(data):
     # for i in images:
     #     print(i.shape)
 
-    max_image_width = max(128, max([img.shape[2] for img in images]))
-    max_image_height = max(256, max([img.shape[1] for img in images]))
+    max_image_width = max(1000, max([img.shape[2] for img in images]))
+    max_image_height = max(32, max([img.shape[1] for img in images]))
 
     X_train = torch.ones(
         size=[len(images), 1, max_image_height, max_image_width], dtype=torch.float32
@@ -180,6 +183,7 @@ class GrandStaffSingleSystem(OMRIMG2SEQDataset):
         augment=False,
         tokenizer_type="word",
         fixed_img_height=256,
+        max_fix_img_width=None,
     ) -> None:
         self.augment = augment
         self.teacher_forcing_error_rate = 0.2
@@ -196,6 +200,7 @@ class GrandStaffSingleSystem(OMRIMG2SEQDataset):
             split=split,
             fold=self.fold,
             fixed_img_height=self.fixed_img_height,
+            max_fix_img_width = max_fix_img_width,
         )
         self.y = self.preprocess_gt(self.y)
         self.tensorTransform = transforms.ToTensor()
