@@ -348,7 +348,7 @@ class SMTModelForCausalLM(PreTrainedModel):
         self.w2i = config.w2i
         self.i2w = config.i2w
         self.maxlen = int(config.maxlen)
-        self.apply(self._init_weights)
+        # self.apply(self._init_weights)
     
     def forward_encoder(self, x):
         return self.encoder(pixel_values=x).last_hidden_state
@@ -401,20 +401,20 @@ class SMTModelForCausalLM(PreTrainedModel):
         return text_sequence, predictions
     
 
-    @staticmethod
-    def _init_weights(module: nn.Module):
-        if isinstance(module, (nn.Linear, nn.Conv1d)):
-            torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
-            if module.bias is not None:
-                torch.nn.init.zeros_(module.bias)
-        elif isinstance(module, nn.Conv2d):
-            torch.nn.init.kaiming_normal_(
-                module.weight, mode="fan_out", nonlinearity="relu"
-            )
-            if module.bias is not None:
-                torch.nn.init.zeros_(module.bias)
-        elif isinstance(module, nn.Embedding):
-            torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
-            if module.padding_idx is not None:
-                with torch.no_grad():
-                    module.weight[module.padding_idx].fill_(0)
+    # @staticmethod
+    # def _init_weights(module: nn.Module):
+    #     if isinstance(module, (nn.Linear, nn.Conv1d)):
+    #         torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
+    #         if module.bias is not None:
+    #             torch.nn.init.zeros_(module.bias)
+    #     elif isinstance(module, nn.Conv2d):
+    #         torch.nn.init.kaiming_normal_(
+    #             module.weight, mode="fan_out", nonlinearity="relu"
+    #         )
+    #         if module.bias is not None:
+    #             torch.nn.init.zeros_(module.bias)
+    #     elif isinstance(module, nn.Embedding):
+    #         torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
+    #         if module.padding_idx is not None:
+    #             with torch.no_grad():
+    #                 module.weight[module.padding_idx].fill_(0)
