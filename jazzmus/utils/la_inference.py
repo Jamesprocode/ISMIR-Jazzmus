@@ -3,6 +3,8 @@ from typing import List
 import os
 import cv2
 
+from tqdm import tqdm
+
 from PIL import Image
 
 
@@ -13,12 +15,14 @@ def run_la_inference(files: List[str], save_path: str):
     model = YOLO("../yolo_weigths/yolov11s_20241108.pt")
 
     print("Model loaded")
+    print("Processing images")
 
     # Run inference on images
     results = model(files)  # List of Results objects
 
     # Process each image result
-    for img_idx, result in enumerate(results):
+    # add tqdm for progress bar
+    for img_idx, result in enumerate(tqdm(results, desc="Processing images")):
         image_path = files[img_idx]
         image = Image.open(image_path)  # Load image using Pillow
 

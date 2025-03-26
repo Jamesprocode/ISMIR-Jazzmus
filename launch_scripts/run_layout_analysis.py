@@ -10,7 +10,9 @@ from PIL import Image
 svg_files = list(Path("./data/jazzmus_dataset_synthetic").glob("*.svg"))
 
 # convert each SVG file to PNG
-for svgfile in svg_files:
+from tqdm import tqdm
+
+for svgfile in tqdm(svg_files, desc="Converting SVG to PNG"):
     pngfile = str(svgfile.with_suffix(".png"))
 
     with open(svgfile, mode="r") as input_file:
