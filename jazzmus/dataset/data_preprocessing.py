@@ -154,8 +154,8 @@ def augment(image):
     kernel_h = np.random.randint(1, 3 + 1)
     kernel_w = np.random.randint(1, 3 + 1)
 
-    br_factor = np.random.uniform(0.01, 1)
-    ctr_factor = np.random.uniform(0.01, 1)
+    br_factor = np.random.uniform(0.7, 1.2)
+    ctr_factor = np.random.uniform(0.5, 1.5)
 
     dilation_erosion = None
     if np.random.randint(2) == 0:
