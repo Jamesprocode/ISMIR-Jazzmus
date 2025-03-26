@@ -12,7 +12,7 @@ scikit-image
 timm
 torch
 torchinfo
-torchvision
+torchvision==0.21
 transformers
 visualizer
 datasets
