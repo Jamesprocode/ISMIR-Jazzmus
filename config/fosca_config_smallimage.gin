@@ -1,0 +1,17 @@
+# path to splits
+CTCDataModule.path_to_splits = "data/jazzmus_dataset_regions/splits"
+CTCDataset.split_enc = False
+CTCDataset.harm_proc = False
+CTCDataset.vocab_folder = "data/jazzmus_dataset_regions/vocab" # a vocab_folder/vocabs will be created
+GrandStaffDataset.data_path = "data/jazzmus_dataset_regions/splits"
+GrandStaffDataset.vocab_name = "vocab"
+GrandStaffDataset.num_workers = 4
+make_vocabulary.pathToSave = "data/jazzmus_dataset_regions/vocab"
+GrandStaffSingleSystem.fixed_img_height = 128
+GrandStaffSingleSystem.max_fix_img_width = 1000
+
+# MODEL
+SMT_Trainer.warmup_steps = 150
+
+# ENCODING
+GrandStaffSingleSystem.tokenizer_type = "medium"
