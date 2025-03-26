@@ -114,10 +114,18 @@ def train(
         #     check_on_train_epoch_end=False,
         # ),
     ]
+    try:
+        pretrained = gin.query_parameter("SMT_Trainer.load_pretrained")
+    except ValueError as e:
+        pretrained = False
+
+    wandb_name = f"{model_type}_{tokenizer_type}_lvl_lr{lr}"
+    if pretrained:
+        wandb_name += "_pretrained"
 
     my_logger = WandbLogger(
         project="jazzmus",
-        name=f"{model_type}_{tokenizer_type}_lvl_lr{lr}",
+        name=wandb_name,
         log_model=True,
         group=f"{model_type}",
         save_dir="logs",

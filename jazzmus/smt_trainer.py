@@ -136,7 +136,6 @@ class SMT_Trainer(L.LightningModule):
             y,
             path_to_images
         ) = batch
-        print(x.shape)
         loss = self.compute_loss(batch)
 
         self.log("train/loss", loss, on_epoch=True, batch_size=x.shape[0], prog_bar=True)
