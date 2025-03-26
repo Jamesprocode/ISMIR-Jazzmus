@@ -14,6 +14,8 @@ from jazzmus.dataset.data_preprocessing import augment, convert_img_to_tensor
 from jazzmus.dataset.smt_dataset_utils import check_and_retrieveVocabulary, load_kern
 from jazzmus.dataset.tokenizer import process_text
 
+from pathlib import Path
+
 
 def load_set(
     dataset,
@@ -22,7 +24,8 @@ def load_set(
     reduce_ratio=1.0,
     fixed_size=None,
     fixed_img_height=256,
-    max_fix_img_width=None
+    max_fix_img_width=None,
+    include_synthetic=False,
 ):
     x = []
     y = []
@@ -34,6 +37,22 @@ def load_set(
         lines = f.readlines()
         img_samples = [line.split(" ")[1].strip() for line in lines]
         kern_samples = [line.split(" ")[0].strip() for line in lines]
+
+    if include_synthetic and split == "train":
+        img_samples_stems = [Path(img).stem for img in img_samples]
+        kern_folder = Path(kern_samples[0]).parent
+        counter = 0
+        # add the pieces from data/la_result to the dataset
+        assert Path("data/jazzmus_dataset_synthetic_regions").exists(), "data/la_result does not exist. Create synthetic first!"
+        # take only the pieces that are in the train split
+        for piece in Path("data/jazzmus_dataset_synthetic_regions").rglob("*.jpg"):
+            if piece.stem.split("_syn")[0] in img_samples_stems:
+                img_samples.append(str(piece))
+                kern_synpath = kern_folder / Path(str(piece.stem.split("_syn")[0]) + ".kern")
+                assert kern_synpath.exists(), f"Kern file {kern_synpath} does not exist"
+                kern_samples.append(kern_synpath)
+                counter += 1
+        print(f"Added {counter} synthetic pieces to the dataset")
 
     print(f"Number of regions in split: {split} SMB dataset: {len(img_samples)}")
 
@@ -184,6 +203,7 @@ class GrandStaffSingleSystem(OMRIMG2SEQDataset):
         tokenizer_type="word",
         fixed_img_height=256,
         max_fix_img_width=None,
+        include_synthetic=False,
     ) -> None:
         self.augment = augment
         self.teacher_forcing_error_rate = 0.2
@@ -201,6 +221,7 @@ class GrandStaffSingleSystem(OMRIMG2SEQDataset):
             fold=self.fold,
             fixed_img_height=self.fixed_img_height,
             max_fix_img_width = max_fix_img_width,
+            include_synthetic=include_synthetic,
         )
         self.y = self.preprocess_gt(self.y)
         self.tensorTransform = transforms.ToTensor()

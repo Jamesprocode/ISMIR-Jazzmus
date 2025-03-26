@@ -119,9 +119,16 @@ def train(
     except ValueError as e:
         pretrained = False
 
+    try:
+        synthetic = gin.query_parameter("GrandStaffSingleSystem.include_synthetic")
+    except ValueError as e:
+        synthetic = False
+
     wandb_name = f"{model_type}_{tokenizer_type}_lvl_lr{lr}"
     if pretrained:
         wandb_name += "_pretrained"
+    if synthetic:
+        wandb_name += "_syn"
 
     my_logger = WandbLogger(
         project="jazzmus",
