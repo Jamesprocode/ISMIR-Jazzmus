@@ -20,3 +20,5 @@ wandb
 scikit-learn
 ultralytics
 lxml
+einops
+cairosvg

@@ -10,7 +10,9 @@ def run_la_inference(files: List[str], save_path: str):
     os.makedirs(save_path, exist_ok=True)
 
     # Load the YOLO model
-    model = YOLO("/Users/jc/Documents/tesis/ISMIR-Jazzmus/weigths/yolov11s_20241108.pt")
+    model = YOLO("../yolo_weigths/yolov11s_20241108.pt")
+
+    print("Model loaded")
 
     # Run inference on images
     results = model(files)  # List of Results objects
@@ -46,22 +48,22 @@ def run_la_inference(files: List[str], save_path: str):
 
         # Process and save sorted staff images
         for sorted_idx, (y1, x1, y2, x2) in enumerate(staff_boxes):
-            cropped_staff = image[y1:y2, x1:x2]
+            cropped_staff = image.crop((x1, y1, x2, y2))
 
             # Ensure crop is valid
             if cropped_staff.size == 0:
                 print(f"Warning: Empty crop for {image_path} at index {sorted_idx}")
                 continue
 
-            # Save cropped staff image with ordered index
-            staff_filename = f"{save_path}/{img_idx}_staff_{sorted_idx}.jpg"
+            # Save cropped staff image with ordered index and original image path
+            staff_filename = f"{save_path}/{image_path.stem.replace('jpg','')}_staff_{sorted_idx}.jpg"
             # cv2.imwrite(staff_filename, cropped_staff)
             # write Pillow
             cropped_staff.save(staff_filename)
             print(f"Saved: {staff_filename}")
 
         # Optionally save the full result image
-        result.save(filename=f"{save_path}/{img_idx}_result.jpg")
+        result.save(filename=f"{save_path}/{image_path.stem.replace('jpg','')}_result.jpg")
 
 
 # Example usage:
