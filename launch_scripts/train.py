@@ -5,7 +5,11 @@ import gin
 import torch
 
 from lightning.pytorch import Trainer, seed_everything
-from lightning.pytorch.callbacks import EarlyStopping, ModelCheckpoint, LearningRateMonitor
+from lightning.pytorch.callbacks import (
+    EarlyStopping,
+    ModelCheckpoint,
+    LearningRateMonitor,
+)
 from lightning.pytorch.loggers import WandbLogger
 
 from jazzmus.dataset.ctc_datamodule import CTCDataModule
@@ -28,6 +32,7 @@ def train(
     accumulate_grad_batches: int = 16,
     config: str = None,
     lr: float = 1e-3,
+    only_test: str = None,
 ):
     gc.collect()
     torch.cuda.empty_cache()
@@ -53,7 +58,11 @@ def train(
         w2i, i2w = datamodule.get_w2i_and_i2w()
 
         model = CTCTrainedCRNN(
-            w2i=w2i, i2w=i2w, max_image_len=datamodule.get_max_img_len(), fold=fold, lr=lr
+            w2i=w2i,
+            i2w=i2w,
+            max_image_len=datamodule.get_max_img_len(),
+            fold=fold,
+            lr=lr,
         )
 
         datamodule.width_reduction = model.width_reduction
@@ -83,7 +92,7 @@ def train(
             lr=lr,
         )
         tokenizer_type = gin.query_parameter("GrandStaffSingleSystem.tokenizer_type")
-        
+
     else:
         raise ValueError(f"Model type {model_type} not recognized")
 
@@ -152,14 +161,24 @@ def train(
         fast_dev_run=debug,
     )
 
-    trainer.fit(model=model, datamodule=datamodule)
+    if only_test is None:
+        trainer.fit(model=model, datamodule=datamodule)
 
-    # End of training, test partition
-    if model_type == "crnn":
-        model = CTCTrainedCRNN.load_from_checkpoint(callbacks[0].best_model_path)
-    elif model_type == "smt":
-        model = SMT_Trainer.load_from_checkpoint(callbacks[0].best_model_path)
+        # End of training, test partition
+        if model_type == "crnn":
+            model = CTCTrainedCRNN.load_from_checkpoint(callbacks[0].best_model_path)
+        elif model_type == "smt":
+            model = SMT_Trainer.load_from_checkpoint(callbacks[0].best_model_path)
 
+    else:
+        if model_type == "smt":
+            import wandb
+
+            run = wandb.init()
+            # 'university-alicante/jazzmus/model-b39op3ud:v0'
+            artifact = run.use_artifact(only_test, type="model")
+            artifact_dir = artifact.download()
+            model = SMT_Trainer.load_from_checkpoint(artifact_dir + "/model.ckpt")
     model.freeze()
     trainer.test(model, datamodule)
 
