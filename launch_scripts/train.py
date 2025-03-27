@@ -171,6 +171,8 @@ def train(
             model = SMT_Trainer.load_from_checkpoint(callbacks[0].best_model_path)
 
     else:
+        if not only_test.startswith("university"):
+            only_test = "university-alicante/jazzmus/model-" +  only_test + ":best"
         if model_type == "smt":
             import wandb
 
@@ -179,7 +181,13 @@ def train(
             artifact = run.use_artifact(only_test, type="model")
             artifact_dir = artifact.download()
             model = SMT_Trainer.load_from_checkpoint(artifact_dir + "/model.ckpt")
+        else:
+            raise NotImplementedError
     model.freeze()
+    model.eval()
+
+    # run last validation to see if things are ok
+    trainer.validate(model, datamodule=datamodule)
     trainer.test(model, datamodule)
 
 
