@@ -23,7 +23,7 @@
 
 ## About
 
-abc
+We are still working on cleaning the codebase. Feel free to ask any doubt.
 
 ## How To Use
 
