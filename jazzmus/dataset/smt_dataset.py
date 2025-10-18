@@ -60,7 +60,7 @@ def load_set(
         "Number of images and kern files do not match"
     )
 
-    for kern_sample, img_sample in progress.track(zip(kern_samples, img_samples)):
+    for img_sample, kern_sample in progress.track(zip(img_samples, kern_samples)):
         krn_content = load_kern(kern_sample)
 
         # read image from path
