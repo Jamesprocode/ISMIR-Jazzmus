@@ -35,8 +35,8 @@ def load_set(
 
     with open(f"{dataset}/{split}_{fold}.txt") as f:
         lines = f.readlines()
-        img_samples = [line.split(" ")[1].strip() for line in lines]
-        kern_samples = [line.split(" ")[0].strip() for line in lines]
+        kern_samples = [line.split(" ")[1].strip() for line in lines]
+        img_samples = [line.split(" ")[0].strip() for line in lines]
 
     if include_synthetic and split == "train":
         img_samples_stems = [Path(img).stem for img in img_samples]

@@ -28,6 +28,7 @@ class SMTConfig(PretrainedConfig):
         hidden_enc_sizes=[64, 128, 256],
         enc_depths=[3, 3, 9],
         **kwargs,
+        
     ):
         self.architectures = ["SMT"]
         self.maxh = maxh
@@ -47,3 +48,12 @@ class SMTConfig(PretrainedConfig):
         self.enc_stages = enc_stages
         self.hidden_enc_sizes = hidden_enc_sizes
         self.enc_depths = enc_depths
+        
+        self._attn_implementation_internal = None
+        self._attn_implementation = "eager" 
+        self.torch_dtype = "bfloat16"
+        self._name_or_path = kwargs.pop('_name_or_path', '')
+        self.is_encoder_decoder = True
+        
+        
+        

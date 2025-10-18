@@ -15,5 +15,6 @@ GrandStaffSingleSystem.include_synthetic = False
 SMT_Trainer.warmup_steps = 150
 SMT_Trainer.load_pretrained = False
 
+
 # ENCODING
 GrandStaffSingleSystem.tokenizer_type = "word"

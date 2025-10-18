@@ -34,10 +34,11 @@ def save_regions(image, regions, folder, name, idx):
         
         # Crop and save the image
         cropped = image.crop((fromx, fromy, tox, toy))
-        cropped.save(f"{folder}/{name}/jpg/img_{idx}_{r_idx}.jpg", "JPEG")
+
+        cropped.convert("RGB").save(f"{folder}/{name}/jpg/img_{idx}_{r_idx}_syn.jpg", "JPEG")
 
         # Save the **kern encoding as the annotation
-        with open(f"{folder}/{name}/gt/img_{idx}_{r_idx}.txt", "w") as f:
+        with open(f"{folder}/{name}/gt/img_{idx}_{r_idx}_syn.txt", "w") as f:
             if "**kern" in system:
                 f.write(system["**kern"])
             else:
@@ -45,8 +46,8 @@ def save_regions(image, regions, folder, name, idx):
                 # Write empty file or skip
                 f.write("")
 
-        images.append(f"data/{name}/jpg/img_{idx}_{r_idx}.jpg")
-        annotations.append(f"data/{name}/gt/img_{idx}_{r_idx}.txt")
+        images.append(f"data/{name}/jpg/img_{idx}_{r_idx}_syn.jpg")
+        annotations.append(f"data/{name}/gt/img_{idx}_{r_idx}_syn.txt")
         
     return images, annotations
 
@@ -139,18 +140,18 @@ def create_kfold_splits(
         )
 
         # save folds in files
-        with open(f"data/{name}/splits/train_{fold_idx}.dat", "w") as f:
+        with open(f"data/{name}/splits/train_{fold_idx}_syn.txt", "w") as f:
             for idx in train_indices:
                 f.write(f"{image_paths[idx]} {annotation_paths[idx]}\n")
 
-        with open(f"data/{name}/splits/val_{fold_idx}.dat", "w") as f:
+        with open(f"data/{name}/splits/val_{fold_idx}_syn.txt", "w") as f:
             for idx in val_indices:
                 f.write(f"{image_paths[idx]} {annotation_paths[idx]}\n")
 
-        with open(f"data/{name}/splits/test_{fold_idx}.dat", "w") as f:
+        with open(f"data/{name}/splits/test_{fold_idx}_syn.txt", "w") as f:
             for idx in test_indices:
                 f.write(f"{image_paths[idx]} {annotation_paths[idx]}\n")
 
 
 if __name__ == "__main__":
-    prepare_hf_dataset("PRAIG/JAZZMUS", name="jazzmus", folds=5)
+    prepare_hf_dataset("PRAIG/JAZZMUS_Synthetic", name="jazzmus_dataset_synthetic_regions", folds=5)

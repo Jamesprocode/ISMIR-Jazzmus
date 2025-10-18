@@ -349,6 +349,8 @@ class SMTModelForCausalLM(PreTrainedModel):
         self.i2w = config.i2w
         self.maxlen = int(config.maxlen)
         # self.apply(self._init_weights)
+        
+        
     
     def forward_encoder(self, x):
         return self.encoder(pixel_values=x).last_hidden_state
