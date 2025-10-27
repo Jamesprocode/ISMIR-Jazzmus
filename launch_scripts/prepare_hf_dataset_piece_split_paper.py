@@ -158,38 +158,36 @@ def prepare_hf_dataset_paper_split(
     print(f"✓ Pieces with duplicates: {len(duplicates)}")
     print(f"✓ Total duplicate scores: {sum(len(indices) for indices in duplicates.values())}")
 
-    # Get unique pieces (first occurrence of each title)
-    unique_piece_indices = []
-    for title, indices in title_to_indices.items():
-        unique_piece_indices.append(indices[0])  # Keep first occurrence
+    # Create list of unique titles (like filtered_scores in create_splits.py)
+    # For each title, we'll use the first occurrence to represent it
+    unique_titles = list(title_to_indices.keys())
+    print(f"\n✓ Total unique pieces (like paper's 163): {len(unique_titles)}")
 
-    print(f"\n✓ Filtering to {len(unique_piece_indices)} unique pieces (first occurrence)")
-
-    # Split unique pieces
+    # Split unique TITLES (not indices) - this is the key difference!
     print("\n" + "="*60)
-    print("Pass 2: Splitting unique pieces...")
+    print("Pass 2: Splitting unique piece titles...")
     print("="*60)
 
     np.random.seed(random_seed)
-    shuffled_unique = np.array(unique_piece_indices)
-    np.random.shuffle(shuffled_unique)
+    shuffled_titles = np.array(unique_titles)
+    np.random.shuffle(shuffled_titles)
 
-    n_unique = len(shuffled_unique)
+    n_unique = len(shuffled_titles)
     n_test = int(n_unique * test_pct)
     n_val = int(n_unique * val_pct)
     n_train = n_unique - n_test - n_val
 
-    # Split by indices
-    test_unique_indices = shuffled_unique[:n_test].tolist()
-    val_unique_indices = shuffled_unique[n_test:n_test + n_val].tolist()
-    train_unique_indices = shuffled_unique[n_test + n_val:].tolist()
+    # Split by TITLES
+    test_titles = shuffled_titles[:n_test].tolist()
+    val_titles = shuffled_titles[n_test:n_test + n_val].tolist()
+    train_titles = shuffled_titles[n_test + n_val:].tolist()
 
-    # Get titles for each split
-    test_titles = {piece_titles[idx] for idx in test_unique_indices}
-    val_titles = {piece_titles[idx] for idx in val_unique_indices}
-    train_titles = {piece_titles[idx] for idx in train_unique_indices}
+    # Now convert titles to indices
+    # Test and val: only first occurrence (like version_1)
+    test_indices = [title_to_indices[title][0] for title in test_titles]
+    val_indices = [title_to_indices[title][0] for title in val_titles]
 
-    # Add ALL versions of training pieces
+    # Train: ALL versions of training pieces (this is the key!)
     train_all_indices = []
     for title in train_titles:
         train_all_indices.extend(title_to_indices[title])
@@ -201,8 +199,8 @@ def prepare_hf_dataset_paper_split(
 
     print(f"\nScore distribution (with duplicates):")
     print(f"  Train: {len(train_all_indices)} scores (includes all versions)")
-    print(f"  Val:   {len(val_unique_indices)} scores")
-    print(f"  Test:  {len(test_unique_indices)} scores")
+    print(f"  Val:   {len(val_indices)} scores")
+    print(f"  Test:  {len(test_indices)} scores")
 
     # Process and save images
     print("\n" + "="*60)
@@ -237,11 +235,11 @@ def prepare_hf_dataset_paper_split(
         train_images.extend(piece_data[idx]["images"])
         train_annotations.extend(piece_data[idx]["annotations"])
 
-    for idx in val_unique_indices:
+    for idx in val_indices:
         val_images.extend(piece_data[idx]["images"])
         val_annotations.extend(piece_data[idx]["annotations"])
 
-    for idx in test_unique_indices:
+    for idx in test_indices:
         test_images.extend(piece_data[idx]["images"])
         test_annotations.extend(piece_data[idx]["annotations"])
 
