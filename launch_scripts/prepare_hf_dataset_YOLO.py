@@ -311,6 +311,6 @@ if __name__ == "__main__":
         folder="data",
         folds=5,
         use_yolo=True,  # Change to False to use original bboxes
-        yolo_model_path="/Users/jameswang/workspace/OMR-Jazz/ismiromrjazz/ISMIR-Jazzmus/weigths/yolov11s_20241108.pt",
+        yolo_model_path="/home/hice1/jwang3180/jazzmus/ISMIR-Jazzmus/weigths/yolov11s_20241108.pt",
         max_images=None  # Set to a number (e.g., 10) to test on fewer images
     )

@@ -172,7 +172,7 @@ def train(
         check_val_every_n_epoch=5,
         deterministic=False,
         benchmark=False,
-        precision="16-mixed",
+        precision="bf16-mixed",
         accelerator="auto",
         accumulate_grad_batches=accumulate_grad_batches,
         fast_dev_run=debug,

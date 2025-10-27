@@ -40,7 +40,7 @@ def load_set(
 
     if include_synthetic and split == "train":
         img_samples_stems = [Path(img).stem for img in img_samples]
-        kern_folder = Path(kern_samples[0]).parent
+        kern_folder = Path("data/jazzmus_dataset_synthetic_regions/gt")
         counter = 0
         # add the pieces from data/la_result to the dataset
         assert Path("data/jazzmus_dataset_synthetic_regions").exists(), "data/la_result does not exist. Create synthetic first!"
@@ -48,7 +48,7 @@ def load_set(
         for piece in Path("data/jazzmus_dataset_synthetic_regions").rglob("*.jpg"):
             if piece.stem.split("_syn")[0] in img_samples_stems:
                 img_samples.append(str(piece))
-                kern_synpath = kern_folder / Path(str(piece.stem.split("_syn")[0]) + ".kern")
+                kern_synpath = kern_folder / Path(str(piece.stem) + ".txt")
                 assert kern_synpath.exists(), f"Kern file {kern_synpath} does not exist"
                 kern_samples.append(kern_synpath)
                 counter += 1
