@@ -183,14 +183,20 @@ def prepare_hf_dataset_paper_split(
     train_titles = shuffled_titles[n_test + n_val:].tolist()
 
     # Now convert titles to indices
-    # Test and val: only first occurrence (like version_1)
+    # The key logic from create_splits.py line 105:
+    # train gets everything NOT in test/val
+
+    # First, collect which indices are assigned to test/val (only first occurrence)
     test_indices = [title_to_indices[title][0] for title in test_titles]
     val_indices = [title_to_indices[title][0] for title in val_titles]
 
-    # Train: ALL versions of training pieces (this is the key!)
-    train_all_indices = []
-    for title in train_titles:
-        train_all_indices.extend(title_to_indices[title])
+    assigned_to_test_or_val = set(test_indices + val_indices)
+
+    # Train: ALL indices that are NOT in test or val
+    # This automatically includes:
+    # - ALL versions of training pieces
+    # - Additional versions of test/val pieces (since only first was assigned)
+    train_all_indices = [idx for idx in range(num_images) if idx not in assigned_to_test_or_val]
 
     print(f"\nUnique piece distribution:")
     print(f"  Train: {n_train} unique pieces")
