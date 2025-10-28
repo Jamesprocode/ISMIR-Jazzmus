@@ -109,6 +109,7 @@ def train(
             lr=lr,
         )
         tokenizer_type = gin.query_parameter("GrandStaffSingleSystem.tokenizer_type")
+        print(f"Tokenizer type: {tokenizer_type}")
 
     else:
         raise ValueError(f"Model type {model_type} not recognized")
