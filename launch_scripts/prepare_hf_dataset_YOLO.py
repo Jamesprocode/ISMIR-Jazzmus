@@ -256,7 +256,7 @@ def prepare_hf_dataset(hf_name, name, folder: str = "data", folds: int = 5,
         images_paths,
         annotations_paths,
         n_folds=folds,
-        val_pct=0.1,
+        val_pct=0.125,
         name=name,
     )
     print("✓ Dataset preparation complete!")
@@ -307,7 +307,7 @@ if __name__ == "__main__":
     # Set use_yolo=False to use original bounding boxes from dataset
     prepare_hf_dataset(
         hf_name="PRAIG/JAZZMUS_Synthetic",
-        name="jazzmus_dataset_synthetic_regions",
+        name="jazzmus_dataset_synthetic_regions_701020",
         folder="data",
         folds=5,
         use_yolo=True,  # Change to False to use original bboxes

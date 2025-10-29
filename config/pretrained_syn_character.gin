@@ -13,4 +13,4 @@ SMT_Trainer.warmup_steps = 150
 SMT_Trainer.load_pretrained = True
 
 # ENCODING
-GrandStaffSingleSystem.tokenizer_type = "word"
+GrandStaffSingleSystem.tokenizer_type = "character"

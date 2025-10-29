@@ -58,7 +58,7 @@ def prepare_hf_dataset(hf_name, name, folder: str = "data", folds: int = 5):
     annotations_paths = []
 
     # Get dataset from the hub
-    dataset = load_dataset(hf_name, split="train", num_proc=4)
+    dataset = load_dataset(hf_name, split="train", num_proc=4, revision="d127980")
 
     os.makedirs(f"{folder}/{name}/jpg", exist_ok=True)
     os.makedirs(f"{folder}/{name}/gt", exist_ok=True)
@@ -155,4 +155,4 @@ def create_kfold_splits(
 
 
 if __name__ == "__main__":
-    prepare_hf_dataset("PRAIG/JAZZMUS_Synthetic", name="jazzmus_dataset_synthetic_regions", folds=5)
+    prepare_hf_dataset("PRAIG/JAZZMUS_Synthetic", name="jazzmus_dataset_synthetic_regions_og", folds=5)

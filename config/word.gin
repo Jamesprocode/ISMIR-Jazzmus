@@ -13,4 +13,4 @@ SMT_Trainer.load_pretrained = False
 
 
 # ENCODING
-GrandStaffSingleSystem.tokenizer_type = "word"
+GrandStaffSingleSystem.tokenizer_type = "character"
