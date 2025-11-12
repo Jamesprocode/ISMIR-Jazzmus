@@ -25,7 +25,7 @@ python train.py \
 echo "Run pre_character"
 python train.py \
   --fold 0 \
-  --config "config/pretrain_character.gin" \
+  --config "config/syn_character.gin" \
   --model_type "smt" \
   --batch_size 64 \
   --accumulate_grad_batches 1 \
@@ -36,7 +36,7 @@ python train.py \
  echo "Run syn_medium"
 python train.py \
   --fold 0 \
-  --config "config/pretrain_medium.gin" \
+  --config "config/syn_medium.gin" \
   --model_type "smt" \
   --batch_size 64 \
   --accumulate_grad_batches 1 \
@@ -47,7 +47,7 @@ python train.py \
 echo "Run pre_syn_word"
 python train.py \
   --fold 0 \
-  --config "config/pretrain_syn_word.gin" \
+  --config "config/syn_word.gin" \
   --model_type "smt" \
   --batch_size 64 \
   --accumulate_grad_batches 1 \

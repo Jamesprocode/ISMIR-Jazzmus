@@ -2,7 +2,7 @@
 CTCDataModule.path_to_splits = "data/jazzmus_dataset_regions/splits"
 CTCDataset.split_enc = False
 CTCDataset.harm_proc = False
-CTCDataset.vocab_folder = "data/jazzmus_paper_split/vocab" # a vocab_folder/vocabs will be created
+CTCDataset.vocab_folder = "data/jazzmus_dataset_regions/vocab" # a vocab_folder/vocabs will be created
 GrandStaffDataset.data_path = "data/jazzmus_paper_split/splits"
 GrandStaffDataset.vocab_name = "vocab"
 GrandStaffDataset.num_workers = 4
