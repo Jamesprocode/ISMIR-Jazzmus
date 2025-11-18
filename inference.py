@@ -17,7 +17,7 @@ from PIL import Image
 from tqdm import tqdm
 
 from jazzmus.smt_trainer import SMT_Trainer
-from jazzmus.dataset.tokenizer import untokenize
+from jazzmus.dataset.tokenizer import untokenize, process_text
 from jazzmus.metrics import compute_metrics
 from jazzmus.dataset.eval_functions import compute_poliphony_metrics
 from collections import defaultdict
@@ -66,6 +66,48 @@ def extract_spines(kern_text):
 
     return result
 
+def process_ground_truth_from_file(gt_path, model, tokenizer_type="word"):
+    """
+    Process ground truth from file exactly like training does.
+
+    Training pipeline:
+    1. Load raw file
+    2. Tokenize with process_text()
+    3. Add <bos> and <eos>
+    4. Convert to token IDs with w2i
+    5. Convert back to strings with i2w
+    6. Untokenize to get readable format
+
+    Args:
+        gt_path: Path to ground truth kern file
+        model: Trained SMTModelForCausalLM with w2i and i2w mappings
+        tokenizer_type: "word", "character", or "medium"
+
+    Returns:
+        Untokenized readable ground truth string
+    """
+    # Load raw file
+    with open(gt_path, 'r', encoding='utf-8') as f:
+        lines = f.readlines()
+
+    # Tokenize (same as dataset preprocessing)
+    tokens = process_text(lines, tokenizer_type=tokenizer_type)
+
+    # Add special tokens (same as dataset preprocessing, line 257 in smt_dataset.py)
+    tokens = ["<bos>"] + tokens + ["<eos>"]
+
+    # Convert token strings to token IDs using w2i (same as __getitem__ line 248)
+    token_ids = [model.w2i[token] for token in tokens]
+    token_ids = torch.tensor(token_ids, dtype=torch.long)
+
+    # Convert back to strings using i2w, excluding the last token (<eos>) like training does (line 194)
+    # gt = untokenize([self.model.i2w[token.item()] for token in y_single[:-1]])
+    gt_tokens = [model.i2w[token.item()] for token in token_ids[:-1]]
+
+    # Untokenize to get readable format
+    gt_readable = untokenize(gt_tokens)
+
+    return gt_readable
 
 def calculate_spine_metrics(prediction, ground_truth):
     """
@@ -193,14 +235,14 @@ class FullPageInference:
             new_height = int(new_width / aspect_ratio)
 
         # Resize
-        # img = cv2.resize(img, (new_width, new_height))
+        img = cv2.resize(img, (new_width, new_height))
 
         # Convert to tensor and normalize
         img_tensor = torch.from_numpy(img).float() / 255.0
         img_tensor = img_tensor.unsqueeze(0).unsqueeze(0)  # Add batch and channel dims
 
-        # Pad to max size
-        padded = torch.zeros(1, 1, max_height, max_width)
+        # Pad to max size with ones (white padding, matching training)
+        padded = torch.ones(1, 1, max_height, max_width)
         padded[:, :, :new_height, :new_width] = img_tensor[:, :, :new_height, :new_width]
 
         print(f"✓ Image preprocessed: {(height, width)}->{(new_height, new_width)} -> {padded.shape}")
@@ -235,7 +277,6 @@ class FullPageInference:
             # If tokens are already strings, use them directly
             token_strs = [str(t) for t in predicted_tokens]
         prediction_str = untokenize(token_strs)
-        print("Prediction:", prediction_str)
         results = {
             "tokens": token_strs,
             "prediction": prediction_str,
@@ -282,7 +323,7 @@ class FullPageInference:
         print(result['prediction'])
         print("=" * 60)
 
-    def score_with_ground_truth(self, prediction, ground_truth_path, per_spine=True):
+    def score_with_ground_truth(self, prediction, ground_truth_path, per_spine=True, tokenizer_type="medium"):
         """
         Calculate metrics by comparing prediction with ground truth.
 
@@ -295,37 +336,35 @@ class FullPageInference:
             dict: Metrics (SER, SEQ-ER, and per-spine if requested)
         """
         # Load ground truth
-        with open(ground_truth_path, 'r', encoding='utf-8') as f:
-            ground_truth = f.read().strip()
+        ground_truth = process_ground_truth_from_file(ground_truth_path, self.model, tokenizer_type)
 
         print("\n" + "=" * 60)
-        print("SCORING INFERENCE")
+        print("ground truth")
         print(ground_truth)
-        # ground_truth = ground_truth.replace('\\n', '\n').replace('\\t', '\t')
         # Display metrics
         print("\n" + "=" * 60)
         print("SCORING RESULTS")
         print("=" * 60)
 
-        if per_spine:
-            # Calculate per-spine metrics
-            spine_metrics = calculate_spine_metrics(prediction, ground_truth)
 
-            print("\nPER-SPINE METRICS:")
-            print("-" * 60)
-            for spine_name in sorted(spine_metrics.keys()):
-                metrics = spine_metrics[spine_name]
-                print(f"\n{spine_name}:")
-                print(f"  CER: {metrics['cer']:.2f}%")
-                print(f"  SER: {metrics['ser']:.2f}%")
-                print(f"  LER: {metrics['ler']:.2f}%")
-        else:
-            # Calculate overall metrics only
-            cer, ser, ler = compute_poliphony_metrics([prediction], [ground_truth])
-            spine_metrics = {"OVERALL": {"cer": cer, "ser": ser, "ler": ler}}
-            print(f"SER (System Error Rate):     {ser:.2f}%")
-            print(f"CER (Character Error Rate): {cer:.2f}%")
-            print(f"LER (Line Error Rate):      {ler:.2f}%")
+        # Calculate per-spine metrics
+        spine_metrics = calculate_spine_metrics(prediction, ground_truth)
+
+        print("\nPER-SPINE METRICS:")
+        print("-" * 60)
+        for spine_name in sorted(spine_metrics.keys()):
+            metrics = spine_metrics[spine_name]
+            print(f"\n{spine_name}:")
+            print(f"  CER: {metrics['cer']:.2f}%")
+            print(f"  SER: {metrics['ser']:.2f}%")
+            print(f"  LER: {metrics['ler']:.2f}%")
+
+    # Calculate overall metrics only
+        cer, ser, ler = compute_poliphony_metrics([prediction], [ground_truth])
+        spine_metrics = {"OVERALL": {"cer": cer, "ser": ser, "ler": ler}}
+        print(f"SER (System Error Rate):     {ser:.2f}%")
+        print(f"CER (Character Error Rate): {cer:.2f}%")
+        print(f"LER (Line Error Rate):      {ler:.2f}%")
 
         print(f"\nGround truth length: {len(ground_truth)}")
         print(f"Prediction length:   {len(prediction)}")
@@ -341,6 +380,7 @@ def evaluate_test_set(
     fold=0,
     output_dir=None,
     device="cuda",
+    tokenizer_type="medium",
 ):
     """
     Evaluate model on entire test set and compute aggregate metrics.
@@ -395,8 +435,7 @@ def evaluate_test_set(
             prediction = result['prediction']
 
             # Load ground truth
-            with open(gt_path, 'r', encoding='utf-8') as f:
-                ground_truth = f.read().strip()
+            ground_truth = process_ground_truth_from_file(gt_path, inference.model, tokenizer_type)
 
             all_predictions.append(prediction)
             all_ground_truths.append(ground_truth)
@@ -517,6 +556,7 @@ def run_inference(
     split="test",
     fold=0,
     device="cuda",
+    tokenizer_type="medium",
 ):
     """
     Run inference on single image or entire test set.
@@ -533,7 +573,7 @@ def run_inference(
     """
     # Batch evaluation mode
     if test_dir:
-        evaluate_test_set(checkpoint_path, test_dir, split, fold, output_path, device)
+        evaluate_test_set(checkpoint_path, test_dir, split, fold, output_path, device, tokenizer_type)
         return
 
     # Single image mode
@@ -548,10 +588,9 @@ def run_inference(
 
     # Display result
     inference.display_result(result)
-
     # Score if ground truth provided
     if ground_truth_path:
-        inference.score_with_ground_truth(result['prediction'], ground_truth_path)
+        inference.score_with_ground_truth(result['prediction'], ground_truth_path, tokenizer_type)
 
 
 
@@ -560,16 +599,19 @@ if __name__ == "__main__":
     # Edit these parameters and run: python inference.py
 
     # Single image inference
-    IMAGE_PATH = "data/jazzmus_systems/jpg/img_10_0.jpg"  # Path to image (e.g., "path/to/image.jpg")
-    GROUND_TRUTH_PATH = "data/jazzmus_systems/gt/img_10_0.txt"  # Path to ground truth (e.g., "path/to/gt.txt")
-
+    IMAGE_PATH = "data/jazzmus_systems/jpg/img_10_1.jpg"  # Path to image (e.g., "path/to/image.jpg")
+    GROUND_TRUTH_PATH = "data/jazzmus_systems/gt/img_10_1.txt"  # Path to ground truth (e.g., "path/to/gt.txt")
+    # IMAGE_PATH = None
+    # GROUND_TRUTH_PATH = None
     # Batch evaluation
-    TEST_DIR = None  # Dataset directory
+    TEST_DIR = "/home/hice1/jwang3180/jazzmus/ISMIR-Jazzmus/data/jazzmus_systems"  # Dataset directory
+    TEST_DIR = None
     SPLIT = "test"  # Which split: train/val/test
     FOLD = 0  # Fold number
-
+    TOKENIZER_TYPE = "medium"  # Tokenizer type: "word", "character", or "medium"
+    
     # Model
-    CHECKPOINT_PATH = "/home/hice1/jwang3180/jazzmus/ISMIR-Jazzmus/weights/smt/smt_0-v1.ckpt"
+    CHECKPOINT_PATH = "weights/smt/smt_0-v1.ckpt"
     DEVICE = "cuda"  # cuda or cpu
 
     # Output (optional, leave None to skip saving)
@@ -585,4 +627,5 @@ if __name__ == "__main__":
         split=SPLIT,
         fold=FOLD,
         device=DEVICE,
+        tokenizer_type=TOKENIZER_TYPE,
     )
