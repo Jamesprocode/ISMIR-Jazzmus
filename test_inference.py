@@ -24,7 +24,7 @@ print(f"Data directory: {DATA_DIR}")
 print(f"Testing on {SPLIT} split\n")
 
 # Load model from checkpoint
-# model = SMT_Trainer.load_from_checkpoint(CHECKPOINT_PATH)
+model = SMT_Trainer.load_from_checkpoint(CHECKPOINT_PATH)
 datamodule = GrandStaffDataset(data_path=DATA_DIR, fold=FOLD, batch_size=64)
 
 print_smt_batch(datamodule.train_dataloader())
@@ -41,8 +41,8 @@ trainer = pl.Trainer(
 print("=" * 70)
 print("RUNNING TEST EVALUATION")
 print("=" * 70 + "\n")
-
-trainer.test(datamodule, ckpt_path=CHECKPOINT_PATH)
+model.eval()
+trainer.test(model, datamodule)
 
 print("\n" + "=" * 70)
 print("Test predictions saved to: test_predictions/{texture}/{fold}/")

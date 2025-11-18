@@ -67,7 +67,10 @@ conda activate jazzmus
 srun -p ice-gpu --gres=gpu:h100:1 --mem=64G --cpus-per-task=20 \
   --time=6:00:00 --mail-type=BEGIN --mail-user=jwang3180@gatech.edu --pty bash
   
-srun -p ice-gpu --gres=gpu:a40:1 --mem=64G --cpus-per-task=20 \
+srun -p ice-gpu --gres=gpu:a100:1 --mem=64G --cpus-per-task=20 \
+  --time=3:00:00 --mail-type=BEGIN --mail-user=jwang3180@gatech.edu --pty bash
+
+srun -p ice-gpu --gres=gpu:v100:1 --mem=64G --cpus-per-task=10 \
   --time=6:00:00 --mail-type=BEGIN --mail-user=jwang3180@gatech.edu --pty bash
 
 # 8x H200, very high memory/CPU (interactive)

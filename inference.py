@@ -21,6 +21,7 @@ from jazzmus.dataset.tokenizer import untokenize, process_text
 from jazzmus.metrics import compute_metrics
 from jazzmus.dataset.eval_functions import compute_poliphony_metrics
 from collections import defaultdict
+from jazzmus.dataset.data_preprocessing import convert_img_to_tensor
 
 def extract_spines(kern_text):
     """
@@ -94,15 +95,15 @@ def process_ground_truth_from_file(gt_path, model, tokenizer_type="word"):
     tokens = process_text(lines, tokenizer_type=tokenizer_type)
 
     # Add special tokens (same as dataset preprocessing, line 257 in smt_dataset.py)
-    tokens = ["<bos>"] + tokens + ["<eos>"]
+    # tokens = ["<bos>"] + tokens + ["<eos>"]
 
     # Convert token strings to token IDs using w2i (same as __getitem__ line 248)
-    token_ids = [model.w2i[token] for token in tokens]
+    token_ids = [model.model.w2i[token] for token in tokens]
     token_ids = torch.tensor(token_ids, dtype=torch.long)
 
     # Convert back to strings using i2w, excluding the last token (<eos>) like training does (line 194)
     # gt = untokenize([self.model.i2w[token.item()] for token in y_single[:-1]])
-    gt_tokens = [model.i2w[token.item()] for token in token_ids[:-1]]
+    gt_tokens = [model.model.i2w[token.item()] for token in token_ids[:-1]]
 
     # Untokenize to get readable format
     gt_readable = untokenize(gt_tokens)
@@ -238,17 +239,22 @@ class FullPageInference:
         img = cv2.resize(img, (new_width, new_height))
 
         # Convert to tensor and normalize
-        img_tensor = torch.from_numpy(img).float() / 255.0
-        img_tensor = img_tensor.unsqueeze(0).unsqueeze(0)  # Add batch and channel dims
+        # img_tensor = torch.from_numpy(img).float() / 255.0
+        # img_tensor = img_tensor.unsqueeze(0).unsqueeze(0)  # Add batch and channel dims
+
+                # Convert to tensor using the same pipeline as validation/test
+        # This applies: ToPILImage → Grayscale → ToTensor
+        img_tensor = convert_img_to_tensor(img)  # Returns (C, H, W) = (1, H, W)
+        img_tensor = img_tensor.unsqueeze(0)    # Add batch dimension: (1, 1, H, W)
 
         # Pad to max size with ones (white padding, matching training)
         padded = torch.ones(1, 1, max_height, max_width)
-        padded[:, :, :new_height, :new_width] = img_tensor[:, :, :new_height, :new_width]
+        padded[:, :, :new_height, :new_width] = img_tensor
 
         print(f"✓ Image preprocessed: {(height, width)}->{(new_height, new_width)} -> {padded.shape}")
 
         return padded.to(self.device)
-
+    
     def predict(self, image_path, return_probs=False):
         """
         Predict on full-page image.
@@ -601,17 +607,17 @@ if __name__ == "__main__":
     # Single image inference
     IMAGE_PATH = "data/jazzmus_systems/jpg/img_10_1.jpg"  # Path to image (e.g., "path/to/image.jpg")
     GROUND_TRUTH_PATH = "data/jazzmus_systems/gt/img_10_1.txt"  # Path to ground truth (e.g., "path/to/gt.txt")
-    # IMAGE_PATH = None
-    # GROUND_TRUTH_PATH = None
+    IMAGE_PATH = None
+    GROUND_TRUTH_PATH = None
     # Batch evaluation
     TEST_DIR = "/home/hice1/jwang3180/jazzmus/ISMIR-Jazzmus/data/jazzmus_systems"  # Dataset directory
-    TEST_DIR = None
+    # TEST_DIR = None
     SPLIT = "test"  # Which split: train/val/test
     FOLD = 0  # Fold number
     TOKENIZER_TYPE = "medium"  # Tokenizer type: "word", "character", or "medium"
     
     # Model
-    CHECKPOINT_PATH = "weights/smt/smt_0-v1.ckpt"
+    CHECKPOINT_PATH = "weights/smt/smt_0.ckpt"
     DEVICE = "cuda"  # cuda or cpu
 
     # Output (optional, leave None to skip saving)
