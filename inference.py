@@ -20,11 +20,114 @@ from jazzmus.smt_trainer import SMT_Trainer
 from jazzmus.dataset.tokenizer import untokenize
 from jazzmus.metrics import compute_metrics
 from jazzmus.dataset.eval_functions import compute_poliphony_metrics
+from collections import defaultdict
+
+def extract_spines(kern_text):
+    """
+    Extract individual spines from **kern format.
+
+    Returns dict with spine name -> content mapping.
+    E.g., {'**kern': '...melody...', '**mxhm': '...chords...'}
+    """
+    lines = kern_text.strip().split('\n')
+    spines = {}
+    spine_indices = {}
+
+    # Find spine headers (lines starting with **)
+    for i, line in enumerate(lines):
+        if line.startswith('**'):
+            parts = line.split('\t')
+            for j, part in enumerate(parts):
+                if part.startswith('**'):
+                    spine_name = part
+                    if spine_name not in spines:
+                        spines[spine_name] = []
+                        spine_indices[spine_name] = j
+
+    # Extract content for each spine
+    for line in lines:
+        if line.startswith('*') or line.startswith('=') or line.startswith('!'):
+            # Metadata/formatting line - include for all spines
+            parts = line.split('\t')
+            for spine_name, idx in spine_indices.items():
+                if idx < len(parts):
+                    spines[spine_name].append(parts[idx])
+        else:
+            # Data line
+            parts = line.split('\t')
+            for spine_name, idx in spine_indices.items():
+                if idx < len(parts):
+                    spines[spine_name].append(parts[idx])
+
+    # Join lines back together
+    result = {}
+    for spine_name, content_list in spines.items():
+        result[spine_name] = '\n'.join(content_list)
+
+    return result
+
+
+def calculate_spine_metrics(prediction, ground_truth):
+    """
+    Calculate CER/SER/LER for individual spines and overall.
+
+    Returns dict with metrics for each spine and overall.
+    """
+    # Extract spines
+    pred_spines = extract_spines(prediction)
+    gt_spines = extract_spines(ground_truth)
+
+    # Get all spine names
+    all_spines = set(pred_spines.keys()) | set(gt_spines.keys())
+
+    results = {}
+
+    # Calculate metrics for each spine
+    for spine_name in sorted(all_spines):
+        pred_spine = pred_spines.get(spine_name, "")
+        gt_spine = gt_spines.get(spine_name, "")
+
+        if not gt_spine:  # Skip if no ground truth for this spine
+            continue
+
+        try:
+            cer, ser, ler = compute_poliphony_metrics([pred_spine], [gt_spine])
+            results[spine_name] = {
+                "cer": cer,
+                "ser": ser,
+                "ler": ler,
+            }
+        except Exception as e:
+            results[spine_name] = {
+                "cer": 100.0,
+                "ser": 100.0,
+                "ler": 100.0,
+                "error": str(e),
+            }
+
+    # Calculate overall metrics
+    try:
+        cer_overall, ser_overall, ler_overall = compute_poliphony_metrics([prediction], [ground_truth])
+        results["OVERALL"] = {
+            "cer": cer_overall,
+            "ser": ser_overall,
+            "ler": ler_overall,
+        }
+    except Exception as e:
+        results["OVERALL"] = {
+            "cer": 100.0,
+            "ser": 100.0,
+            "ler": 100.0,
+            "error": str(e),
+        }
+
+    return results
+
 
 class FullPageInference:
     """Inference pipeline for full-page jazz leadsheet recognition."""
 
-    def __init__(self, checkpoint_path="ismiromrjazz/ISMIR-Jazzmus/weights/smt_0-v6.ckpt", device="cpu"):
+    def __init__(self, checkpoint_path, device):
         """
         Initialize inference pipeline.
 
@@ -51,7 +154,7 @@ class FullPageInference:
 
         print("✓ Model loaded successfully")
 
-    def preprocess_image(self, image_path, max_height=1024, max_width=2048):
+    def preprocess_image(self, image_path, max_height=128, max_width=1000):
         """
         Preprocess image for inference.
 
@@ -65,6 +168,7 @@ class FullPageInference:
         """
         # Load image
         if isinstance(image_path, str):
+            print("image loaded")
             img = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)
         else:
             img = np.array(image_path)
@@ -131,7 +235,7 @@ class FullPageInference:
             # If tokens are already strings, use them directly
             token_strs = [str(t) for t in predicted_tokens]
         prediction_str = untokenize(token_strs)
-
+        print("Prediction:", prediction_str)
         results = {
             "tokens": token_strs,
             "prediction": prediction_str,
@@ -174,48 +278,65 @@ class FullPageInference:
         print("PREDICTION RESULT")
         print("=" * 60)
         print(f"Number of tokens: {result['num_tokens']}")
-        print(f"\nPredicted kern (first 500 chars):")
-        print(result['prediction'][:500])
-        if len(result['prediction']) > 500:
-            print("...")
+        print(f"\nPredicted kern:")
+        print(result['prediction'])
         print("=" * 60)
 
-    def score_with_ground_truth(self, prediction, ground_truth_path):
+    def score_with_ground_truth(self, prediction, ground_truth_path, per_spine=True):
         """
         Calculate metrics by comparing prediction with ground truth.
 
         Args:
             prediction: Predicted **kern string
             ground_truth_path: Path to ground truth file
+            per_spine: Whether to calculate metrics per individual spine
 
         Returns:
-            dict: Metrics (SER, SEQ-ER)
+            dict: Metrics (SER, SEQ-ER, and per-spine if requested)
         """
         # Load ground truth
         with open(ground_truth_path, 'r', encoding='utf-8') as f:
             ground_truth = f.read().strip()
 
-        # Calculate metrics
-        # metrics = compute_metrics([ground_truth], [prediction])
-        cer, ser, ler = compute_poliphony_metrics([prediction], [ground_truth])
-
+        print("\n" + "=" * 60)
+        print("SCORING INFERENCE")
+        print(ground_truth)
+        # ground_truth = ground_truth.replace('\\n', '\n').replace('\\t', '\t')
         # Display metrics
         print("\n" + "=" * 60)
         print("SCORING RESULTS")
         print("=" * 60)
-        print(f"SER (System Error Rate):     {ser:.2f}%")
-        print(f"CER (Character Error Rate): {cer:.2f}%")
-        print(f"LER (Line Error Rate): {ler:.2f}%")
-        print(f"Ground truth length:         {len(ground_truth)}")
-        print(f"Prediction length:           {len(prediction)}")
+
+        if per_spine:
+            # Calculate per-spine metrics
+            spine_metrics = calculate_spine_metrics(prediction, ground_truth)
+
+            print("\nPER-SPINE METRICS:")
+            print("-" * 60)
+            for spine_name in sorted(spine_metrics.keys()):
+                metrics = spine_metrics[spine_name]
+                print(f"\n{spine_name}:")
+                print(f"  CER: {metrics['cer']:.2f}%")
+                print(f"  SER: {metrics['ser']:.2f}%")
+                print(f"  LER: {metrics['ler']:.2f}%")
+        else:
+            # Calculate overall metrics only
+            cer, ser, ler = compute_poliphony_metrics([prediction], [ground_truth])
+            spine_metrics = {"OVERALL": {"cer": cer, "ser": ser, "ler": ler}}
+            print(f"SER (System Error Rate):     {ser:.2f}%")
+            print(f"CER (Character Error Rate): {cer:.2f}%")
+            print(f"LER (Line Error Rate):      {ler:.2f}%")
+
+        print(f"\nGround truth length: {len(ground_truth)}")
+        print(f"Prediction length:   {len(prediction)}")
         print("=" * 60 + "\n")
 
-        return {"ser": ser, "cer": cer, "ler": ler}
+        return spine_metrics
 
 
 def evaluate_test_set(
-    checkpoint_path="smt_0-v6.ckpt",
-    test_dir="data/handwritten-fullpage",
+    checkpoint_path,
+    test_dir,
     split="test",
     fold=0,
     output_dir=None,
@@ -262,6 +383,8 @@ def evaluate_test_set(
     all_predictions = []
     all_ground_truths = []
     individual_metrics = []
+    spine_predictions = defaultdict(list)  # spine -> list of predictions
+    spine_ground_truths = defaultdict(list)  # spine -> list of ground truths
     failed = []
 
     print(f"Running inference on {len(img_paths)} images...\n")
@@ -278,7 +401,7 @@ def evaluate_test_set(
             all_predictions.append(prediction)
             all_ground_truths.append(ground_truth)
 
-            # Calculate per-sample metrics
+            # Calculate per-sample metrics (overall)
             cer, ser, ler = compute_poliphony_metrics([prediction], [ground_truth])
             individual_metrics.append({
                 "image": Path(img_path).name,
@@ -286,6 +409,18 @@ def evaluate_test_set(
                 "ser": ser,
                 "ler": ler,
             })
+
+            # Extract and collect spines for per-spine aggregate metrics
+            try:
+                pred_spines = extract_spines(prediction)
+                gt_spines = extract_spines(ground_truth)
+
+                for spine_name in pred_spines.keys():
+                    spine_predictions[spine_name].append(pred_spines[spine_name])
+                    spine_ground_truths[spine_name].append(gt_spines.get(spine_name, ""))
+            except Exception as e:
+                # If spine extraction fails, skip per-spine metrics for this sample
+                pass
 
             # Save prediction if output dir provided
             if output_dir:
@@ -314,17 +449,44 @@ def evaluate_test_set(
         if len(failed) > 5:
             print(f"   ... and {len(failed) - 5} more")
 
-    print("\n" + "-" * 70)
+    print("\n" + "=" * 70)
     print("AGGREGATE METRICS")
+    print("=" * 70)
+
+    print("\nOVERALL (All Spines Combined):")
     print("-" * 70)
     print(f"CER (Character Error Rate):  {cer_agg:.2f}%")
     print(f"SER (Sequence Error Rate):   {ser_agg:.2f}%")
     print(f"LER (Line Error Rate):       {ler_agg:.2f}%")
-    print("=" * 70)
+
+    # Show per-spine aggregate metrics using same calculation method
+    if spine_predictions:
+        print("\n" + "-" * 70)
+        print("PER-SPINE METRICS:")
+        print("-" * 70)
+
+        for spine_name in sorted(spine_predictions.keys()):
+            pred_list = spine_predictions[spine_name]
+            gt_list = spine_ground_truths[spine_name]
+
+            if not pred_list or not gt_list:
+                continue
+
+            try:
+                cer_spine, ser_spine, ler_spine = compute_poliphony_metrics(pred_list, gt_list)
+                print(f"\n{spine_name}:")
+                print(f"  CER: {cer_spine:.2f}%")
+                print(f"  SER: {ser_spine:.2f}%")
+                print(f"  LER: {ler_spine:.2f}%")
+            except Exception as e:
+                print(f"\n{spine_name}:")
+                print(f"  Error calculating metrics: {str(e)}")
+
+    print("\n" + "=" * 70)
 
     # Show per-sample statistics
     if individual_metrics:
-        print("\nPER-SAMPLE STATISTICS")
+        print("\nPER-SAMPLE STATISTICS (OVERALL)")
         print("-" * 70)
         cer_values = [m["cer"] for m in individual_metrics]
         ser_values = [m["ser"] for m in individual_metrics]
@@ -347,11 +509,11 @@ def evaluate_test_set(
 
 
 def run_inference(
-    checkpoint_path = "/home/hice1/jwang3180/jazzmus/ISMIR-Jazzmus/weights/smt/smt_0.ckpt",
+    checkpoint_path,
     image_path=None,
     output_path=None,
     ground_truth_path=None,
-    test_dir="/home/hice1/jwang3180/jazzmus/ISMIR-Jazzmus/data/handwritten",
+    test_dir=None,
     split="test",
     fold=0,
     device="cuda",
@@ -394,6 +556,33 @@ def run_inference(
 
 
 if __name__ == "__main__":
-    import fire
+    # ============ CONFIGURATION ============
+    # Edit these parameters and run: python inference.py
 
-    fire.Fire(run_inference)
+    # Single image inference
+    IMAGE_PATH = "data/jazzmus_systems/jpg/img_10_0.jpg"  # Path to image (e.g., "path/to/image.jpg")
+    GROUND_TRUTH_PATH = "data/jazzmus_systems/gt/img_10_0.txt"  # Path to ground truth (e.g., "path/to/gt.txt")
+
+    # Batch evaluation
+    TEST_DIR = None  # Dataset directory
+    SPLIT = "test"  # Which split: train/val/test
+    FOLD = 0  # Fold number
+
+    # Model
+    CHECKPOINT_PATH = "/home/hice1/jwang3180/jazzmus/ISMIR-Jazzmus/weights/smt/smt_0-v1.ckpt"
+    DEVICE = "cuda"  # cuda or cpu
+
+    # Output (optional, leave None to skip saving)
+    OUTPUT_DIR = None  # Directory to save predictions
+
+    # ============ RUN INFERENCE ============
+    run_inference(
+        checkpoint_path=CHECKPOINT_PATH,
+        image_path=IMAGE_PATH,
+        output_path=OUTPUT_DIR,
+        ground_truth_path=GROUND_TRUTH_PATH,
+        test_dir=TEST_DIR,
+        split=SPLIT,
+        fold=FOLD,
+        device=DEVICE,
+    )

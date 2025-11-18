@@ -1,0 +1,14 @@
+GrandStaffDataset.data_path = "data/jazzmus_systems/splits"
+GrandStaffDataset.vocab_name = "vocab"
+GrandStaffDataset.num_workers = 4
+make_vocabulary.pathToSave = "vocab"
+GrandStaffSingleSystem.fixed_img_height = 128
+GrandStaffSingleSystem.max_fix_img_width = 1000
+GrandStaffSingleSystem.include_synthetic = True
+
+# MODEL
+SMT_Trainer.warmup_steps = 150
+SMT_Trainer.load_pretrained = False
+
+# ENCODING
+GrandStaffSingleSystem.tokenizer_type = "word"

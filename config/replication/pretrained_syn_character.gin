@@ -1,15 +1,14 @@
-# path to splits
-GrandStaffDataset.data_path = "data/jazzmus_paper_split/splits"
+GrandStaffDataset.data_path = "data/jazzmus_systems/splits"
 GrandStaffDataset.vocab_name = "vocab"
 GrandStaffDataset.num_workers = 4
-make_vocabulary.pathToSave = "data/jazzmus_paper_split/vocab"
+make_vocabulary.pathToSave = "vocab"
 GrandStaffSingleSystem.fixed_img_height = 128
 GrandStaffSingleSystem.max_fix_img_width = 1000
 GrandStaffSingleSystem.include_synthetic = True
 
 # MODEL
 SMT_Trainer.warmup_steps = 150
-SMT_Trainer.load_pretrained = False
+SMT_Trainer.load_pretrained = True
 
 # ENCODING
-GrandStaffSingleSystem.tokenizer_type = "medium"
+GrandStaffSingleSystem.tokenizer_type = "character"
