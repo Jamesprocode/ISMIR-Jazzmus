@@ -27,6 +27,11 @@ def extract_spines(kern_text):
     """
     Extract individual spines from **kern format.
 
+    Handles both raw and processed (tokenized/untokenized) kern text:
+    - Skips special tokens like <bos>, <eos>
+    - Finds spine headers (lines starting with **)
+    - Extracts content for each spine
+
     Returns dict with spine name -> content mapping.
     E.g., {'**kern': '...melody...', '**mxhm': '...chords...'}
     """
@@ -36,8 +41,13 @@ def extract_spines(kern_text):
 
     # Find spine headers (lines starting with **)
     for i, line in enumerate(lines):
-        if line.startswith('**'):
-            parts = line.split('\t')
+        # Remove special tokens from line start if present
+        clean_line = line
+        if clean_line.startswith('<bos>'):
+            clean_line = clean_line[5:].lstrip()  # Remove <bos> and leading whitespace
+
+        if clean_line.startswith('**'):
+            parts = clean_line.split('\t')
             for j, part in enumerate(parts):
                 if part.startswith('**'):
                     spine_name = part
@@ -47,18 +57,23 @@ def extract_spines(kern_text):
 
     # Extract content for each spine
     for line in lines:
-        if line.startswith('*') or line.startswith('=') or line.startswith('!'):
-            # Metadata/formatting line - include for all spines
-            parts = line.split('\t')
-            for spine_name, idx in spine_indices.items():
-                if idx < len(parts):
-                    spines[spine_name].append(parts[idx])
-        else:
-            # Data line
-            parts = line.split('\t')
-            for spine_name, idx in spine_indices.items():
-                if idx < len(parts):
-                    spines[spine_name].append(parts[idx])
+        # Remove special tokens from line start if present
+        clean_line = line
+        if clean_line.startswith('<bos>'):
+            clean_line = clean_line[5:].lstrip()
+        if clean_line.startswith('<eos>'):
+            clean_line = clean_line[5:].lstrip()
+
+        # Skip metadata lines (starting with * = !)
+        if clean_line.startswith('*') or clean_line.startswith('=') or clean_line.startswith('!'):
+            # In processed text, metadata lines are usually gone, so skip
+            continue
+
+        # Data line
+        parts = clean_line.split('\t')
+        for spine_name, idx in spine_indices.items():
+            if idx < len(parts):
+                spines[spine_name].append(parts[idx])
 
     # Join lines back together
     result = {}
@@ -131,6 +146,7 @@ def calculate_spine_metrics(prediction, ground_truth):
         gt_spine = gt_spines.get(spine_name, "")
 
         if not gt_spine:  # Skip if no ground truth for this spine
+            print("no gt spine")
             continue
 
         try:
@@ -376,7 +392,55 @@ class FullPageInference:
         print(f"\nGround truth length: {len(ground_truth)}")
         print(f"Prediction length:   {len(prediction)}")
         print("=" * 60 + "\n")
+        
 
+        # spine metrics
+        spine_predictions = defaultdict(list)  # spine -> list of predictions
+        spine_ground_truths = defaultdict(list)
+        pred_spines = extract_spines(prediction)
+        gt_spines = extract_spines(ground_truth)
+        for spine_name in pred_spines.keys():
+            spine_predictions[spine_name].append(pred_spines[spine_name])
+            spine_ground_truths[spine_name].append(gt_spines[spine_name])
+
+        if spine_predictions:
+            print("\n" + "-" * 70)
+            print("PER-SPINE METRICS:")
+            print("-" * 70)
+
+        for spine_name in sorted(spine_predictions.keys()):
+            pred_list = spine_predictions[spine_name]
+            gt_list = spine_ground_truths[spine_name]
+
+            print(f"\n{spine_name}:")
+            print(f"  Predictions: {len(pred_list)} samples")
+            print(f"  Ground truth: {len(gt_list)} samples")
+
+            if not pred_list or not gt_list:
+                print(f"  SKIPPED: Empty lists")
+                continue
+
+            # Check content length
+            total_pred_len = sum(len(p) for p in pred_list)
+            total_gt_len = sum(len(g) for g in gt_list)
+            print(f"  Pred content length: {total_pred_len} chars")
+            print(f"  GT content length: {total_gt_len} chars")
+
+            if total_gt_len == 0:
+                print(f"  SKIPPED: Empty ground truth content")
+                continue
+
+            try:
+                cer_spine, ser_spine, ler_spine = compute_poliphony_metrics(pred_list, gt_list)
+                print(f"  CER: {cer_spine:.2f}%")
+                print(f"  SER: {ser_spine:.2f}%")
+                print(f"  LER: {ler_spine:.2f}%")
+            except ZeroDivisionError as e:
+                print(f"  ERROR: Division by zero - {str(e)}")
+            except Exception as e:
+                print(f"  ERROR: {str(e)}")
+
+            print("\n" + "=" * 70)
         return spine_metrics
 
 
@@ -463,7 +527,7 @@ def evaluate_test_set(
 
                 for spine_name in pred_spines.keys():
                     spine_predictions[spine_name].append(pred_spines[spine_name])
-                    spine_ground_truths[spine_name].append(gt_spines.get(spine_name, ""))
+                    spine_ground_truths[spine_name].append(gt_spines[spine_name])
             except Exception as e:
                 # If spine extraction fails, skip per-spine metrics for this sample
                 pass
@@ -515,18 +579,33 @@ def evaluate_test_set(
             pred_list = spine_predictions[spine_name]
             gt_list = spine_ground_truths[spine_name]
 
+            print(f"\n{spine_name}:")
+            print(f"  Predictions: {len(pred_list)} samples")
+            print(f"  Ground truth: {len(gt_list)} samples")
+
             if not pred_list or not gt_list:
+                print(f"  SKIPPED: Empty lists")
+                continue
+
+            # Check content length
+            total_pred_len = sum(len(p) for p in pred_list)
+            total_gt_len = sum(len(g) for g in gt_list)
+            print(f"  Pred content length: {total_pred_len} chars")
+            print(f"  GT content length: {total_gt_len} chars")
+
+            if total_gt_len == 0:
+                print(f"  SKIPPED: Empty ground truth content")
                 continue
 
             try:
                 cer_spine, ser_spine, ler_spine = compute_poliphony_metrics(pred_list, gt_list)
-                print(f"\n{spine_name}:")
                 print(f"  CER: {cer_spine:.2f}%")
                 print(f"  SER: {ser_spine:.2f}%")
                 print(f"  LER: {ler_spine:.2f}%")
+            except ZeroDivisionError as e:
+                print(f"  ERROR: Division by zero - {str(e)}")
             except Exception as e:
-                print(f"\n{spine_name}:")
-                print(f"  Error calculating metrics: {str(e)}")
+                print(f"  ERROR: {str(e)}")
 
     print("\n" + "=" * 70)
 
@@ -608,11 +687,11 @@ if __name__ == "__main__":
     # Single image inference
     IMAGE_PATH = "data/jazzmus_systems/jpg/img_10_1.jpg"  # Path to image (e.g., "path/to/image.jpg")
     GROUND_TRUTH_PATH = "data/jazzmus_systems/gt/img_10_1.txt"  # Path to ground truth (e.g., "path/to/gt.txt")
-    IMAGE_PATH = None
-    GROUND_TRUTH_PATH = None
+    # IMAGE_PATH = None
+    # GROUND_TRUTH_PATH = None
     # Batch evaluation
     TEST_DIR = "/home/hice1/jwang3180/jazzmus/ISMIR-Jazzmus/data/jazzmus_systems"  # Dataset directory
-    # TEST_DIR = None
+    TEST_DIR = None
     SPLIT = "test"  # Which split: train/val/test
     FOLD = 0  # Fold number
     TOKENIZER_TYPE = "medium"  # Tokenizer type: "word", "character", or "medium"
