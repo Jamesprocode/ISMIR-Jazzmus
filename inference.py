@@ -95,7 +95,7 @@ def process_ground_truth_from_file(gt_path, model, tokenizer_type="word"):
     tokens = process_text(lines, tokenizer_type=tokenizer_type)
 
     # Add special tokens (same as dataset preprocessing, line 257 in smt_dataset.py)
-    # tokens = ["<bos>"] + tokens + ["<eos>"]
+    tokens = ["<bos>"] + tokens + ["<eos>"]
 
     # Convert token strings to token IDs using w2i (same as __getitem__ line 248)
     token_ids = [model.model.w2i[token] for token in tokens]
@@ -197,17 +197,22 @@ class FullPageInference:
 
         print("✓ Model loaded successfully")
 
-    def preprocess_image(self, image_path, max_height=128, max_width=1000):
+    def preprocess_image(self, image_path, fixed_img_height=128, max_fix_img_width=1000):
         """
-        Preprocess image for inference.
+        Preprocess image for inference using training's batch_preparation_img2seq logic.
+
+        This matches the dataset preprocessing:
+        - Fixed height: 128 (preserve aspect ratio)
+        - Variable width: calculated to preserve aspect, capped at 1000
+        - Padding: to minimum of 32 height and 1000 width (matching batch_preparation_img2seq)
 
         Args:
             image_path: Path to input image
-            max_height: Maximum image height
-            max_width: Maximum image width
+            fixed_img_height: Fixed height for resizing (default 128, matching config)
+            max_fix_img_width: Maximum width after resizing (default 1000, matching config)
 
         Returns:
-            torch.Tensor: Preprocessed image
+            torch.Tensor: Preprocessed image with shape (1, 1, pad_height, pad_width)
         """
         # Load image
         if isinstance(image_path, str):
@@ -219,39 +224,35 @@ class FullPageInference:
         if img is None:
             raise ValueError(f"Could not load image: {image_path}")
 
-        # Resize with aspect ratio preservation
-        height, width = img.shape
-        aspect_ratio = width / height
+        # Get original dimensions
+        original_height, original_width = img.shape
 
-        # Fit to max dimensions
-        if height > max_height:
-            new_height = max_height
-            new_width = int(new_height * aspect_ratio)
-        else:
-            new_height = height
-            new_width = width
+        # Resize with aspect ratio preservation (matching training logic in smt_dataset.py:72-77)
+        # Height is fixed, width is calculated to preserve aspect ratio
+        new_height = fixed_img_height
+        new_width = int(np.ceil(original_width * fixed_img_height / original_height))
 
-        if new_width > max_width:
-            new_width = max_width
-            new_height = int(new_width / aspect_ratio)
+        # Cap width at max
+        if new_width > max_fix_img_width:
+            new_width = max_fix_img_width
 
-        # Resize
+        # Resize image
         img = cv2.resize(img, (new_width, new_height))
 
-        # Convert to tensor and normalize
-        # img_tensor = torch.from_numpy(img).float() / 255.0
-        # img_tensor = img_tensor.unsqueeze(0).unsqueeze(0)  # Add batch and channel dims
-
-                # Convert to tensor using the same pipeline as validation/test
+        # Convert to tensor using the same pipeline as training
         # This applies: ToPILImage → Grayscale → ToTensor
         img_tensor = convert_img_to_tensor(img)  # Returns (C, H, W) = (1, H, W)
         img_tensor = img_tensor.unsqueeze(0)    # Add batch dimension: (1, 1, H, W)
 
-        # Pad to max size with ones (white padding, matching training)
-        padded = torch.ones(1, 1, max_height, max_width)
+        # Pad to minimum dimensions using batch_preparation_img2seq logic (lines 105-106)
+        # This matches what happens during training when batch_size=1
+        pad_height = max(32, new_height)      # At least 32 (from batch_preparation_img2seq)
+        pad_width = max(1000, new_width)      # At least 1000 (from batch_preparation_img2seq)
+
+        padded = torch.ones(1, 1, pad_height, pad_width)
         padded[:, :, :new_height, :new_width] = img_tensor
 
-        print(f"✓ Image preprocessed: {(height, width)}->{(new_height, new_width)} -> {padded.shape}")
+        print(f"✓ Image preprocessed: {(original_height, original_width)}->{(new_height, new_width)} -> padded to {(pad_height, pad_width)}")
 
         return padded.to(self.device)
     
@@ -368,8 +369,8 @@ class FullPageInference:
     # Calculate overall metrics only
         cer, ser, ler = compute_poliphony_metrics([prediction], [ground_truth])
         spine_metrics = {"OVERALL": {"cer": cer, "ser": ser, "ler": ler}}
+        print(f"CER (Character Error Rate): {cer:.2f}%")  
         print(f"SER (System Error Rate):     {ser:.2f}%")
-        print(f"CER (Character Error Rate): {cer:.2f}%")
         print(f"LER (Line Error Rate):      {ler:.2f}%")
 
         print(f"\nGround truth length: {len(ground_truth)}")
@@ -617,7 +618,7 @@ if __name__ == "__main__":
     TOKENIZER_TYPE = "medium"  # Tokenizer type: "word", "character", or "medium"
     
     # Model
-    CHECKPOINT_PATH = "weights/smt/smt_0.ckpt"
+    CHECKPOINT_PATH = "weights/smt/smt_0-v1.ckpt"
     DEVICE = "cuda"  # cuda or cpu
 
     # Output (optional, leave None to skip saving)

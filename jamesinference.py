@@ -10,10 +10,11 @@ from jazzmus.dataset.tokenizer import untokenize
 from jazzmus.metrics import compute_metrics
 from jazzmus.dataset.eval_functions import compute_poliphony_metrics
 from collections import defaultdict
+from jazzmus.dataset.data_preprocessing import convert_img_to_tensor
 
 
-IMAGE_PATH = "data/jazzmus_systems/jpg/img_10_0.jpg"  # Path to image (e.g., "path/to/image.jpg")
-GROUND_TRUTH_PATH = "data/jazzmus_systems/gt/img_10_0.txt"  # Path to ground truth (e.g., "path/to/gt.txt")
+IMAGE_PATH = "data/jazzmus_systems/jpg/img_10_1.jpg"  # Path to image (e.g., "path/to/image.jpg")
+GROUND_TRUTH_PATH = "data/jazzmus_systems/gt/img_10_1.txt"  # Path to ground truth (e.g., "path/to/gt.txt")
 checkpoint_path = "weights/smt/smt_0-v1.ckpt"  # Path to model checkpoint (e.g., "path/to/checkpoint.ckpt")
 
 device = "cuda"
@@ -37,8 +38,8 @@ img = cv2.resize(img, (width, height))
 print(f"✓ Image preprocessed: {(og_height, og_width)}->{(height, width)}")
 
 
-img_tensor = torch.from_numpy(img).float() / 255.0
-img_tensor = img_tensor.unsqueeze(0).unsqueeze(0)
+img_tensor = convert_img_to_tensor(img)  # Returns (C, H, W) = (1, H, W)
+img_tensor = img_tensor.unsqueeze(0) 
 
 img_tensor = img_tensor.to(device)
 
@@ -54,7 +55,7 @@ if isinstance(predicted_tokens[0], int):
     # If tokens are integers, look them up in i2w
     token_strs = [model.model.i2w.get(int(t), "<unk>") for t in predicted_tokens]
 else:
-    # If tokens are already strings, use them directly
+    print("If tokens are already strings, use them directly")
     token_strs = [str(t) for t in predicted_tokens]
 
 prediction_str = untokenize(token_strs)
