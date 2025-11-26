@@ -15,6 +15,8 @@ import numpy as np
 from pathlib import Path
 from PIL import Image
 from tqdm import tqdm
+import pandas as pd
+import os
 
 from jazzmus.smt_trainer import SMT_Trainer
 from jazzmus.dataset.tokenizer import untokenize, process_text
@@ -106,23 +108,37 @@ def process_ground_truth_from_file(gt_path, model, tokenizer_type="word"):
     with open(gt_path, 'r', encoding='utf-8') as f:
         lines = f.readlines()
 
-    # Tokenize (same as dataset preprocessing)
-    tokens = process_text(lines, tokenizer_type=tokenizer_type)
+    # # Tokenize (same as dataset preprocessing)
+    # tokens = process_text(lines, tokenizer_type=tokenizer_type)
 
-    # Add special tokens (same as dataset preprocessing, line 257 in smt_dataset.py)
-    tokens = ["<bos>"] + tokens + ["<eos>"]
+    # # Add special tokens (same as dataset preprocessing, line 257 in smt_dataset.py)
+    # tokens = ["<bos>"] + tokens + ["<eos>"]
 
-    # Convert token strings to token IDs using w2i (same as __getitem__ line 248)
-    token_ids = [model.model.w2i[token] for token in tokens]
-    token_ids = torch.tensor(token_ids, dtype=torch.long)
+    # # Convert token strings to token IDs using w2i (same as __getitem__ line 248)
+    # token_ids = [model.model.w2i[token] for token in tokens]
+    # token_ids = torch.tensor(token_ids, dtype=torch.long)
 
-    # Convert back to strings using i2w, excluding the last token (<eos>) like training does (line 194)
-    # gt = untokenize([self.model.i2w[token.item()] for token in y_single[:-1]])
-    gt_tokens = [model.model.i2w[token.item()] for token in token_ids[:-1]]
+    # # Convert back to strings using i2w, excluding the last token (<eos>) like training does (line 194)
+    # # gt = untokenize([self.model.i2w[token.item()] for token in y_single[:-1]])
+    # gt_tokens = [model.model.i2w[token.item()] for token in token_ids[:-1]]
 
-    # Untokenize to get readable format
-    gt_readable = untokenize(gt_tokens)
+    # # Untokenize to get readable format
+    # gt_readable = untokenize(gt_tokens)
+    reserved_lines = {"!!linebreak", "!!pagebreak", "*I", "*F:", "!LO"}
 
+    # Filter out:
+    # 1. Reserved lines
+    # 2. Spine header lines (starting with **)
+    filtered_lines = []
+    for line in lines:
+        # Skip reserved lines
+        if any(reserved in line for reserved in reserved_lines):
+            continue
+    
+        filtered_lines.append(line)
+
+        # Convert filtered lines back to text
+        gt_readable = "".join(filtered_lines)
     return gt_readable
 
 def calculate_spine_metrics(prediction, ground_truth):
@@ -213,7 +229,7 @@ class FullPageInference:
 
         print("✓ Model loaded successfully")
 
-    def preprocess_image(self, image_path, fixed_img_height=128, max_fix_img_width=1000):
+    def preprocess_image(self, image_path, fixed_img_height=800, max_fix_img_width=600):
         """
         Preprocess image for inference using training's batch_preparation_img2seq logic.
 
@@ -232,7 +248,7 @@ class FullPageInference:
         """
         # Load image
         if isinstance(image_path, str):
-            print("image loaded")
+            # print("image loaded")
             img = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)
         else:
             img = np.array(image_path)
@@ -262,13 +278,13 @@ class FullPageInference:
 
         # Pad to minimum dimensions using batch_preparation_img2seq logic (lines 105-106)
         # This matches what happens during training when batch_size=1
-        pad_height = max(32, new_height)      # At least 32 (from batch_preparation_img2seq)
-        pad_width = max(1000, new_width)      # At least 1000 (from batch_preparation_img2seq)
+        pad_height = max(400, new_height)      # At least 32 (from batch_preparation_img2seq)
+        pad_width = max(300, new_width)      # At least 1000 (from batch_preparation_img2seq)
 
         padded = torch.ones(1, 1, pad_height, pad_width)
         padded[:, :, :new_height, :new_width] = img_tensor
 
-        print(f"✓ Image preprocessed: {(original_height, original_width)}->{(new_height, new_width)} -> padded to {(pad_height, pad_width)}")
+        # print(f"✓ Image preprocessed: {(original_height, original_width)}->{(new_height, new_width)} -> padded to {(pad_height, pad_width)}")
 
         return padded.to(self.device)
     
@@ -287,7 +303,7 @@ class FullPageInference:
         image_tensor = self.preprocess_image(image_path)
 
         # Generate predictions
-        print("Generating predictions...")
+        # print("Generating predictions...")
         with torch.no_grad():
             predicted_tokens, logits = self.model.model.predict(input=image_tensor[0])
 
@@ -548,9 +564,9 @@ def evaluate_test_set(
     cer_agg, ser_agg, ler_agg = compute_poliphony_metrics(all_predictions, all_ground_truths)
 
     # Display results
-    print("\n" + "=" * 70)
+    print("\n" + "=" * 30)
     print("EVALUATION RESULTS")
-    print("=" * 70)
+    print("=" * 30)
     print(f"✓ Successfully evaluated: {len(all_predictions)}/{len(img_paths)}")
     if failed:
         print(f"✗ Failed: {len(failed)}")
@@ -559,77 +575,102 @@ def evaluate_test_set(
         if len(failed) > 5:
             print(f"   ... and {len(failed) - 5} more")
 
-    print("\n" + "=" * 70)
+    print("\n" + "=" * 30)
     print("AGGREGATE METRICS")
-    print("=" * 70)
+    print("=" * 30)
 
     print("\nOVERALL (All Spines Combined):")
-    print("-" * 70)
+    print("-" * 30)
     print(f"CER (Character Error Rate):  {cer_agg:.2f}%")
     print(f"SER (Sequence Error Rate):   {ser_agg:.2f}%")
     print(f"LER (Line Error Rate):       {ler_agg:.2f}%")
 
     # Show per-spine aggregate metrics using same calculation method
     if spine_predictions:
-        print("\n" + "-" * 70)
-        print("PER-SPINE METRICS:")
-        print("-" * 70)
+        # print("\n" + "-" * 70)
+        # print("PER-SPINE METRICS:")
+        # print("-" * 70)
 
-        for spine_name in sorted(spine_predictions.keys()):
-            pred_list = spine_predictions[spine_name]
-            gt_list = spine_ground_truths[spine_name]
+        #kern
+        pred_list = spine_predictions['**kern']
+        gt_list = spine_ground_truths['**kern']
 
-            print(f"\n{spine_name}:")
-            print(f"  Predictions: {len(pred_list)} samples")
-            print(f"  Ground truth: {len(gt_list)} samples")
+        # print(f"\n**kern:")
+        # print(f"  Predictions: {len(pred_list)} samples")
+        # print(f"  Ground truth: {len(gt_list)} samples")
 
-            if not pred_list or not gt_list:
-                print(f"  SKIPPED: Empty lists")
-                continue
 
-            # Check content length
-            total_pred_len = sum(len(p) for p in pred_list)
-            total_gt_len = sum(len(g) for g in gt_list)
-            print(f"  Pred content length: {total_pred_len} chars")
-            print(f"  GT content length: {total_gt_len} chars")
+        # Check content length
+        total_pred_len = sum(len(p) for p in pred_list)
+        total_gt_len = sum(len(g) for g in gt_list)
+        # print(f"  Pred content length: {total_pred_len} chars")
+        # print(f"  GT content length: {total_gt_len} chars")
 
-            if total_gt_len == 0:
-                print(f"  SKIPPED: Empty ground truth content")
-                continue
 
-            try:
-                cer_spine, ser_spine, ler_spine = compute_poliphony_metrics(pred_list, gt_list)
-                print(f"  CER: {cer_spine:.2f}%")
-                print(f"  SER: {ser_spine:.2f}%")
-                print(f"  LER: {ler_spine:.2f}%")
-            except ZeroDivisionError as e:
-                print(f"  ERROR: Division by zero - {str(e)}")
-            except Exception as e:
-                print(f"  ERROR: {str(e)}")
+        try:
+            cer_kern, ser_kern, ler_kern = compute_poliphony_metrics(pred_list, gt_list)
+            # print(f"  CER: {cer_kern:.2f}%")
+            # print(f"  SER: {ser_kern:.2f}%")
+            # print(f"  LER: {ler_kern:.2f}%")
+        except ZeroDivisionError as e:
+            print(f"  ERROR: Division by zero - {str(e)}")
+        except Exception as e:
+            print(f"  ERROR: {str(e)}")
+            
+        #mxhm
+        pred_list = spine_predictions['**mxhm']
+        gt_list = spine_ground_truths['**mxhm']
+
+        # print(f"\n**mxhm:")
+        # print(f"  Predictions: {len(pred_list)} samples")
+        # print(f"  Ground truth: {len(gt_list)} samples")
+
+
+        # Check content length
+        total_pred_len = sum(len(p) for p in pred_list)
+        total_gt_len = sum(len(g) for g in gt_list)
+        # print(f"  Pred content length: {total_pred_len} chars")
+        # print(f"  GT content length: {total_gt_len} chars")
+
+
+        try:
+            cer_mxhm, ser_mxhm, ler_mxhm = compute_poliphony_metrics(pred_list, gt_list)
+            # print(f"  CER: {cer_mxhm:.2f}%")
+            # print(f"  SER: {ser_mxhm:.2f}%")
+            # print(f"  LER: {ler_mxhm:.2f}%")
+        except ZeroDivisionError as e:
+            print(f"  ERROR: Division by zero - {str(e)}")
+        except Exception as e:
+            print(f"  ERROR: {str(e)}")
 
     print("\n" + "=" * 70)
 
-    # Show per-sample statistics
-    if individual_metrics:
-        print("\nPER-SAMPLE STATISTICS (OVERALL)")
-        print("-" * 70)
-        cer_values = [m["cer"] for m in individual_metrics]
-        ser_values = [m["ser"] for m in individual_metrics]
-        ler_values = [m["ler"] for m in individual_metrics]
+    # # Show per-sample statistics
+    # if individual_metrics:
+    #     print("\nPER-SAMPLE STATISTICS (OVERALL)")
+    #     print("-" * 70)
+    #     cer_values = [m["cer"] for m in individual_metrics]
+    #     ser_values = [m["ser"] for m in individual_metrics]
+    #     ler_values = [m["ler"] for m in individual_metrics]
 
-        print(f"CER - Mean: {np.mean(cer_values):.2f}%, Std: {np.std(cer_values):.2f}%, Min: {np.min(cer_values):.2f}%, Max: {np.max(cer_values):.2f}%")
-        print(f"SER - Mean: {np.mean(ser_values):.2f}%, Std: {np.std(ser_values):.2f}%, Min: {np.min(ser_values):.2f}%, Max: {np.max(ser_values):.2f}%")
-        print(f"LER - Mean: {np.mean(ler_values):.2f}%, Std: {np.std(ler_values):.2f}%, Min: {np.min(ler_values):.2f}%, Max: {np.max(ler_values):.2f}%")
-        print("=" * 70 + "\n")
+    #     print(f"CER - Mean: {np.mean(cer_values):.2f}%, Std: {np.std(cer_values):.2f}%, Min: {np.min(cer_values):.2f}%, Max: {np.max(cer_values):.2f}%")
+    #     print(f"SER - Mean: {np.mean(ser_values):.2f}%, Std: {np.std(ser_values):.2f}%, Min: {np.min(ser_values):.2f}%, Max: {np.max(ser_values):.2f}%")
+    #     print(f"LER - Mean: {np.mean(ler_values):.2f}%, Std: {np.std(ler_values):.2f}%, Min: {np.min(ler_values):.2f}%, Max: {np.max(ler_values):.2f}%")
+    #     print("=" * 70 + "\n")
 
-    if output_dir:
-        print(f"✓ Predictions saved to: {output_dir}\n")
+    # if output_dir:
+    #     print(f"✓ Predictions saved to: {output_dir}\n")
 
     return {
         "cer": cer_agg,
         "ser": ser_agg,
         "ler": ler_agg,
-        "individual_metrics": individual_metrics,
+        "cer_kern": cer_kern,
+        "ser_kern": ser_kern,
+        "ler_kern": ler_kern,
+        "cer_mxhm": cer_mxhm,
+        "ser_mxhm": ser_mxhm,
+        "ler_mxhm": ler_mxhm,
     }
 
 
@@ -659,8 +700,9 @@ def run_inference(
     """
     # Batch evaluation mode
     if test_dir:
-        evaluate_test_set(checkpoint_path, test_dir, split, fold, output_path, device, tokenizer_type)
-        return
+        result = evaluate_test_set(checkpoint_path, test_dir, split, fold, output_path, device, tokenizer_type)
+        print("result", result)
+        return result
 
     # Single image mode
     if not image_path:
@@ -687,11 +729,11 @@ if __name__ == "__main__":
     # Single image inference
     IMAGE_PATH = "data/jazzmus_systems/jpg/img_10_1.jpg"  # Path to image (e.g., "path/to/image.jpg")
     GROUND_TRUTH_PATH = "data/jazzmus_systems/gt/img_10_1.txt"  # Path to ground truth (e.g., "path/to/gt.txt")
-    # IMAGE_PATH = None
-    # GROUND_TRUTH_PATH = None
+    IMAGE_PATH = None
+    GROUND_TRUTH_PATH = None
     # Batch evaluation
-    TEST_DIR = "/home/hice1/jwang3180/jazzmus/ISMIR-Jazzmus/data/jazzmus_systems"  # Dataset directory
-    TEST_DIR = None
+    TEST_DIR = "/home/hice1/jwang3180/jazzmus/ISMIR-Jazzmus/data/jazzmus_fullpage"  # Dataset directory
+    # TEST_DIR = None
     SPLIT = "test"  # Which split: train/val/test
     FOLD = 0  # Fold number
     TOKENIZER_TYPE = "medium"  # Tokenizer type: "word", "character", or "medium"
@@ -704,14 +746,71 @@ if __name__ == "__main__":
     OUTPUT_DIR = None  # Directory to save predictions
 
     # ============ RUN INFERENCE ============
-    run_inference(
-        checkpoint_path=CHECKPOINT_PATH,
-        image_path=IMAGE_PATH,
-        output_path=OUTPUT_DIR,
-        ground_truth_path=GROUND_TRUTH_PATH,
-        test_dir=TEST_DIR,
-        split=SPLIT,
-        fold=FOLD,
-        device=DEVICE,
-        tokenizer_type=TOKENIZER_TYPE,
-    )
+    #loop through checkpoint folder, get the tokenization type from the filename and run inference
+    # Define your checkpoint folder
+    CHECKPOINT_FOLDER = "/home/hice1/jwang3180/jazzmus/ISMIR-Jazzmus/weights/smt_sys_best"
+    
+    checkpoint_files = list(Path(CHECKPOINT_FOLDER).glob("*.ckpt"))
+    # Initialize empty list to collect results
+    results_list = []
+    
+    for checkpoint_path in checkpoint_files:
+    # Extract tokenizer type from filename
+    # Example: "smt_pre_syn_medium.ckpt" -> "medium"
+        filename = checkpoint_path.stem  # Gets filename without .ckpt extension
+        tokenizer_type = filename.split('_')[-1]  # Gets everything after last underscore
+    
+        print(f"\n{'='*50}")
+        print(f"Running inference on: {checkpoint_path.name}")
+        print(f"Tokenizer type: {tokenizer_type}")
+        print(f"{'='*50}\n")
+        
+        result = run_inference(
+            checkpoint_path=str(checkpoint_path),
+            image_path=IMAGE_PATH,
+            output_path=OUTPUT_DIR,
+            ground_truth_path=GROUND_TRUTH_PATH,
+            test_dir=TEST_DIR,
+            split=SPLIT,
+            fold=FOLD,
+            device=DEVICE,
+            tokenizer_type=tokenizer_type,
+        )
+        
+        print(f"Completed inference for {checkpoint_path.name}")
+        print(f"Result: {result}\n")
+        
+            # Add checkpoint info to result dictionary
+        result['checkpoint_name'] = checkpoint_path.name
+        result['tokenizer_type'] = tokenizer_type
+    
+        # Append to results list
+        results_list.append(result)
+        
+        
+    # Create DataFrame from results
+    results_df = pd.DataFrame(results_list)
+    
+    # Reorder columns to put checkpoint info first
+    cols = ['checkpoint_name'] + [col for col in results_df.columns if col not in ['checkpoint_name']]
+    results_df = results_df[cols]
+    print(results_df)
+    # Save to CSV
+    output_csv = "fullpage_inference_results.csv"
+    results_df.to_csv(output_csv, index=False)
+    
+    # Print the full path where it was saved
+    full_path = os.path.abspath(output_csv)
+    print(f"CSV saved to: {full_path}")
+    
+    # result = run_inference(
+    #     checkpoint_path=CHECKPOINT_PATH,
+    #     image_path=IMAGE_PATH,
+    #     output_path=OUTPUT_DIR,
+    #     ground_truth_path=GROUND_TRUTH_PATH,
+    #     test_dir=TEST_DIR,
+    #     split=SPLIT,
+    #     fold=FOLD,
+    #     device=DEVICE,
+    #     tokenizer_type=TOKENIZER_TYPE,
+    # )

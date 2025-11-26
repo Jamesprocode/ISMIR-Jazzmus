@@ -45,7 +45,7 @@ slurm_load_jobs error: Invalid job id specified
 
 python train.py \
     --fold 0 \
-    --config "config/replication/pretrained_syn_medium.gin" \
+    --config "config/replication/pretrained_syn_word.gin" \
     --model_type "smt" \
     --batch_size 64 \
     --accumulate_grad_batches 1 \
@@ -55,7 +55,7 @@ python train.py \
     
     python -c "import torch; print(torch.cuda.is_available(), torch.cuda.device_count(), torch.cuda.get_device_name(0) if torch.cuda.is_available() else None)"
 
-
+python train_full_page.py --config "config/full-page/full_page_syn_medium.gin"
 # SSH to ICE login node
 ssh jwang3180@login-ice.pace.gatech.edu
 
@@ -65,9 +65,9 @@ conda activate jazzmus
 
 # Standard H200 GPU session (interactive shell)
 srun -p ice-gpu --gres=gpu:h100:1 --mem=64G --cpus-per-task=20 \
-  --time=6:00:00 --mail-type=BEGIN --mail-user=jwang3180@gatech.edu --pty bash
+  --time=4:00:00 --mail-type=BEGIN --mail-user=jwang3180@gatech.edu --pty bash
   
-srun -p ice-gpu --gres=gpu:a100:1 --mem=64G --cpus-per-task=20 \
+srun -p ice-gpu --gres=gpu:a40:1 --mem=64G --cpus-per-task=20 \
   --time=3:00:00 --mail-type=BEGIN --mail-user=jwang3180@gatech.edu --pty bash
 
 srun -p ice-gpu --gres=gpu:v100:1 --mem=64G --cpus-per-task=10 \
