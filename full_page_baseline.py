@@ -18,6 +18,7 @@ from jazzmus.smt_trainer import SMT_Trainer
 from jazzmus.dataset.tokenizer import untokenize
 from inference import FullPageInference
 import cv2
+import numpy as np
 
 
 def segment_staves(
@@ -55,8 +56,17 @@ def segment_staves(
             y_center = (y1 + y2) / 2
             staff_boxes.append((y_center, (x1, y1, x2, y2)))
 
+    #extend top and bottom of each box by 10 pixels
+    extended_staff_boxes = []
+    for y_center, (x1, y1, x2, y2) in staff_boxes:
+        extended_y1 = max(0, y1 - 30)
+        extended_y2 = min(image.height, y2 + 30)
+        extended_staff_boxes.append((y_center, (x1, extended_y1, x2, extended_y2)))
+    staff_boxes = extended_staff_boxes
+
     # Sort by vertical position (top to bottom)
     staff_boxes.sort(key=lambda x: x[0])
+    
 
     # Crop each system
     cropped_systems = []
@@ -92,7 +102,7 @@ def load_model(checkpoint_path: str, device: str = "cpu") -> SMT_Trainer:
     return model
 
 
-def preprocess_image(image: Image.Image, max_height: int = 128, max_width: int = 1000) -> torch.Tensor:
+def preprocess_image(image: Image.Image, fixed_img_height: int = 128, max_fix_img_width: int = 1000) -> torch.Tensor:
     """
     Preprocess a staff system image for model input.
 
@@ -105,22 +115,19 @@ def preprocess_image(image: Image.Image, max_height: int = 128, max_width: int =
         Preprocessed tensor (1, 1, H, W)
     """
     # Convert to grayscale
-    image = image.convert('L')
+    image = np.array(image.convert('L'))
 
-    # Resize to fit max dimensions while maintaining aspect ratio
-    width, height = image.size
-    aspect_ratio = width / height
+    # Get original dimensions
+    original_height, original_width = image.shape
 
-    if height > max_height:
-        new_height = max_height
-        new_width = int(new_height * aspect_ratio)
-    else:
-        new_height = height
-        new_width = width
+    # Resize with aspect ratio preservation (matching inference.py logic)
+    new_height = fixed_img_height
+    new_width = int(np.ceil(original_width * fixed_img_height / original_height))
 
-    if new_width > max_width:
-        new_width = max_width
-        new_height = int(new_width / aspect_ratio)
+    # Cap width at max
+    if new_width > max_fix_img_width:
+        new_width = max_fix_img_width
+
 
     image = cv2.resize(image, (new_width, new_height))
 
@@ -237,26 +244,29 @@ def concatenate_systems(system_kerns: List[str]) -> str:
         system_kerns: List of **kern strings, one per system (top to bottom)
 
     Returns:
-        Full-page **kern string with proper linebreak markers
+        Full-page **kern string with linebreak markers
 
     Strategy:
         1. Use headers from the first system
         2. For subsequent systems, strip headers and add linebreak markers
-        3. Concatenate all content
+        3. Remove all "b:none" lines
     """
     if not system_kerns:
         return ""
 
     if len(system_kerns) == 1:
-        return system_kerns[0]
+        # Remove b:none lines from single system
+        lines = [l for l in system_kerns[0].strip().split('\n') if 'b:none' not in l]
+        return '\n'.join(lines)
 
-    # Parse first system (keep all headers)
+    # Parse first system (keep all headers, remove b:none)
     lines = system_kerns[0].strip().split('\n')
     full_kern_lines = []
 
-    # Add all lines from first system
+    # Add all lines from first system (except b:none)
     for line in lines:
-        full_kern_lines.append(line)
+        if 'b:none' not in line:
+            full_kern_lines.append(line)
 
     # Add linebreak marker after first system
     full_kern_lines.append("!!linebreak:original")
@@ -268,6 +278,10 @@ def concatenate_systems(system_kerns: List[str]) -> str:
         # Skip header lines (lines starting with *, !, or **)
         content_started = False
         for line in lines:
+            # Skip b:none lines
+            if 'b:none' in line:
+                continue
+
             stripped = line.strip()
 
             # Skip empty lines
@@ -289,7 +303,7 @@ def concatenate_systems(system_kerns: List[str]) -> str:
                 content_started = True
                 full_kern_lines.append(line)
 
-        # Add linebreak marker after this system (except for last)
+        # Add linebreak marker after this system
         full_kern_lines.append("!!linebreak:original")
 
     # Remove the last linebreak marker and add proper ending
@@ -302,54 +316,100 @@ def concatenate_systems(system_kerns: List[str]) -> str:
     return '\n'.join(full_kern_lines)
 
 
+from tqdm import tqdm
+from jazzmus.dataset.eval_functions import compute_poliphony_metrics
+
 checkpint_path = "/home/hice1/jwang3180/jazzmus/ISMIR-Jazzmus/weights/smt_sys_best/smt_pre_syn_medium.ckpt"
 device = "cuda" if torch.cuda.is_available() else "cpu"
-model = load_model(checkpint_path, device=device)
-image_path = "/home/hice1/jwang3180/jazzmus/ISMIR-Jazzmus/data/jazzmus_fullpage/jpg/img_0.jpg"
 yolo_model_path = "/home/hice1/jwang3180/jazzmus/ISMIR-Jazzmus/yolo_weigths/yolov11s_20241108.pt"
+test_split_file = "/home/hice1/jwang3180/jazzmus/ISMIR-Jazzmus/data/jazzmus_fullpage/splits/test_0.txt"
 
-# Step 1: Segment staves with YOLO
-print("Step 1: YOLO Staff Segmentation")
-print("-" * 60)
-cropped_systems = segment_staves(
-    image_path=image_path,
-    yolo_model_path=yolo_model_path,
-    confidence_threshold=0.5
-    )
-print(f"✓ Segmented into {len(cropped_systems)} systems\n")
+# Load test split
+with open(test_split_file, 'r') as f:
+    test_pairs = [line.strip().split() for line in f.readlines()]
 
-# Step 2: Load SMT inference model
-print("Step 2: Load Recognition Model")
-print("-" * 60)
+print(f"Loaded {len(test_pairs)} test samples")
+
+# Load model once
+print("Loading model...")
 inference_model = FullPageInference(checkpint_path, device=device)
-print(f"✓ Model loaded\n")
+print("✓ Model loaded\n")
 
-# Step 3: Recognize each system
-print("Step 3: System-by-System Recognition")
-print("-" * 60)
-predictions = recognize_systems(cropped_systems, model, device=device)
-# system_kerns = []
-# for i, system_image in enumerate(cropped_systems):
-#     print(f"  System {i+1}/{len(cropped_systems)}...", end=" ")
-#     result = inference_model.predict(system_image)
-#     system_kerns.append(result['prediction'])
-#     print("✓")
-print(f"✓ Recognized {len(predictions)} systems\n")
+# Collect all predictions and ground truths
+all_predictions = []
+all_ground_truths = []
+per_sample_metrics = []
 
-# Step 4: Concatenate into full-page **kern
-print("Step 4: Concatenate Systems")
-print("-" * 60)
-full_page_kern = concatenate_systems(predictions)
-print(f"✓ Concatenated into full-page **kern\n")
-print(full_page_kern)
+for img_path, gt_path in tqdm(test_pairs, desc="Processing test set"):
+    try:
+        # Step 1: Segment staves with YOLO
+        cropped_systems = segment_staves(
+            image_path=img_path,
+            yolo_model_path=yolo_model_path,
+            confidence_threshold=0.5
+        )
 
+        # Step 2: Recognize each system
+        system_kerns = []
+        for system_image in cropped_systems:
+            # Convert PIL Image to numpy array (grayscale) for inference_model.predict()
+            system_array = np.array(system_image.convert('L'))
+            result = inference_model.predict(system_array)
+            system_kerns.append(result['prediction'])
 
-# predictions = recognize_systems(cropped_systems, model, device=device)
-# print("testing Predictions:")
-# print(predictions[0])
+        # Step 3: Concatenate into full-page **kern
+        full_page_kern = concatenate_systems(system_kerns)
 
-# full_page_kern = concatenate_systems(predictions)
-# print("\nFull-page **kern prediction:")
-# print(full_page_kern)
+        # Step 4: Load ground truth
+        with open(gt_path, 'r') as f:
+            ground_truth = f.read()
+
+        all_predictions.append(full_page_kern)
+        all_ground_truths.append(ground_truth)
+
+        # Compute per-sample metrics
+        sample_cer, sample_ser, sample_ler = compute_poliphony_metrics([full_page_kern], [ground_truth])
+        per_sample_metrics.append({
+            'cer': sample_cer,
+            'ser': sample_ser,
+            'ler': sample_ler,
+            'image': img_path
+        })
+
+    except Exception as e:
+        print(f"\n✗ Failed on {img_path}: {e}")
+        continue
+
+# Compute aggregate metrics (all predictions concatenated)
+print(f"\n{'='*60}")
+print("AGGREGATE RESULTS (All predictions concatenated)")
+print(f"{'='*60}")
+print(f"Successfully processed: {len(all_predictions)}/{len(test_pairs)}")
+
+cer_agg, ser_agg, ler_agg = compute_poliphony_metrics(all_predictions, all_ground_truths)
+
+print(f"\nCER (Character Error Rate): {cer_agg:.2f}%")
+print(f"SER (Symbol Error Rate):    {ser_agg:.2f}%")
+print(f"LER (Line Error Rate):      {ler_agg:.2f}%")
+print(f"{'='*60}\n")
+
+# Compute average of per-sample metrics
+print(f"{'='*60}")
+print("AVERAGE PER-SAMPLE RESULTS")
+print(f"{'='*60}")
+
+cer_mean = np.mean([m['cer'] for m in per_sample_metrics])
+ser_mean = np.mean([m['ser'] for m in per_sample_metrics])
+ler_mean = np.mean([m['ler'] for m in per_sample_metrics])
+
+cer_std = np.std([m['cer'] for m in per_sample_metrics])
+ser_std = np.std([m['ser'] for m in per_sample_metrics])
+ler_std = np.std([m['ler'] for m in per_sample_metrics])
+
+print(f"\nCER: {cer_mean:.2f}% (±{cer_std:.2f}%)")
+print(f"SER: {ser_mean:.2f}% (±{ser_std:.2f}%)")
+print(f"LER: {ler_mean:.2f}% (±{ler_std:.2f}%)")
+print(f"{'='*60}\n")
+
 
 

@@ -922,8 +922,8 @@ if __name__ == "__main__":
     # Edit these parameters and run: python inference.py
 
     # Single image inference
-    IMAGE_PATH = "data/jazzmus_systems/jpg/img_0_0.jpg"  # Path to image (e.g., "path/to/image.jpg")
-    GROUND_TRUTH_PATH = "data/jazzmus_systems/gt/img_0_0.txt"  # Path to ground truth (e.g., "path/to/gt.txt")
+    IMAGE_PATH = "data/jazzmus_systems/jpg/img_0_8.jpg"  # Path to image (e.g., "path/to/image.jpg")
+    GROUND_TRUTH_PATH = "data/jazzmus_systems/gt/img_0_8.txt"  # Path to ground truth (e.g., "path/to/gt.txt")
     # IMAGE_PATH = None
     # GROUND_TRUTH_PATH = None
 
