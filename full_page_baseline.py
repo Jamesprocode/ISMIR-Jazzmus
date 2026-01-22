@@ -6,6 +6,7 @@ Simple function to detect and crop staff systems from full-page images.
 
 from typing import List, Tuple
 from PIL import Image
+from jazzmus.dataset.data_preprocessing import convert_img_to_tensor
 from ultralytics import YOLO
 import torch
 from PIL import Image
@@ -15,6 +16,8 @@ import sys
 import os
 from jazzmus.smt_trainer import SMT_Trainer
 from jazzmus.dataset.tokenizer import untokenize
+from inference import FullPageInference
+import cv2
 
 
 def segment_staves(
@@ -89,7 +92,7 @@ def load_model(checkpoint_path: str, device: str = "cpu") -> SMT_Trainer:
     return model
 
 
-def preprocess_image(image: Image.Image, max_height: int = 128, max_width: int = 4096) -> torch.Tensor:
+def preprocess_image(image: Image.Image, max_height: int = 128, max_width: int = 1000) -> torch.Tensor:
     """
     Preprocess a staff system image for model input.
 
@@ -119,28 +122,42 @@ def preprocess_image(image: Image.Image, max_height: int = 128, max_width: int =
         new_width = max_width
         new_height = int(new_width / aspect_ratio)
 
-    image = image.resize((new_width, new_height), Image.LANCZOS)
+    image = cv2.resize(image, (new_width, new_height))
 
-    # Pad to exact dimensions
-    padded = Image.new('L', (max_width, max_height), color=255)  # white background
-    padded.paste(image, (0, 0))
+    # Convert to tensor using the same pipeline as training
+    # This applies: ToPILImage → Grayscale → ToTensor
+    img_tensor = convert_img_to_tensor(image)  # Returns (C, H, W) = (1, H, W)
+    img_tensor = img_tensor.unsqueeze(0)    # Add batch dimension: (1, 1, H, W)
 
-    # Convert to tensor and normalize
-    transform = transforms.Compose([
-        transforms.ToTensor(),
-        # Invert: black text on white -> white text on black
-        transforms.Lambda(lambda x: 1 - x),
-    ])
+    # Pad to minimum dimensions using batch_preparation_img2seq logic (lines 105-106)
+    # This matches what happens during training when batch_size=1
+    pad_height = max(32, new_height)      # At least 32 (from batch_preparation_img2seq)
+    pad_width = max(1000, new_width)      # At least 1000 (from batch_preparation_img2seq)
 
-    tensor = transform(padded)
-    tensor = tensor.unsqueeze(0)  # Add batch dimension: (1, 1, H, W)
+    padded = torch.ones(1, 1, pad_height, pad_width)
+    padded[:, :, :new_height, :new_width] = img_tensor
 
-    return tensor
+
+    # # Pad to exact dimensions
+    # padded = Image.new('L', (max_width, max_height), color=255)  # white background
+    # padded.paste(image, (0, 0))
+
+    # # Convert to tensor and normalize
+    # transform = transforms.Compose([
+    #     transforms.ToTensor(),
+    #     # Invert: black text on white -> white text on black
+    #     transforms.Lambda(lambda x: 1 - x),
+    # ])
+
+    # tensor = transform(padded)
+    # tensor = tensor.unsqueeze(0)  # Add batch dimension: (1, 1, H, W)
+
+    return padded
 
 def recognize_system(
     image: Image.Image,
     model: SMT_Trainer,
-    device: str = "cpu"
+    device: str = "cuda"
 ) -> str:
     """
     Recognize a single staff system and return **kern prediction.
@@ -158,10 +175,19 @@ def recognize_system(
 
     # Run inference
     with torch.no_grad():
-        predicted_sequence, _ = model.model.predict(input=input_tensor.squeeze(0))
+        predicted_sequence, _ = model.model.predict(input=input_tensor[0])
+
+        predicted_tokens = predicted_sequence[0]  # Get the first (and only) sequence
+
+        if isinstance(predicted_tokens[0], int):
+            # If tokens are integers, look them up in i2w
+            token_strs = [model.model.i2w.get(int(t), "<unk>") for t in predicted_tokens]
+        else:
+            # If tokens are already strings, use them directly
+            token_strs = [str(t) for t in predicted_tokens]     
 
     # Decode to **kern
-    kern_prediction = untokenize(predicted_sequence)
+    kern_prediction = untokenize(token_strs)
 
     return kern_prediction
 
@@ -279,19 +305,51 @@ def concatenate_systems(system_kerns: List[str]) -> str:
 checkpint_path = "/home/hice1/jwang3180/jazzmus/ISMIR-Jazzmus/weights/smt_sys_best/smt_pre_syn_medium.ckpt"
 device = "cuda" if torch.cuda.is_available() else "cpu"
 model = load_model(checkpint_path, device=device)
-
 image_path = "/home/hice1/jwang3180/jazzmus/ISMIR-Jazzmus/data/jazzmus_fullpage/jpg/img_0.jpg"
-staff_images = segment_staves(
-    image_path,
-    yolo_model_path="/home/hice1/jwang3180/jazzmus/ISMIR-Jazzmus/yolo_weigths/yolov11s_20241108.pt",
-    confidence_threshold=0.5
-)
-predictions = recognize_systems(staff_images, model, device=device)
-print("testing Predictions:")
-print(predictions[0])
+yolo_model_path = "/home/hice1/jwang3180/jazzmus/ISMIR-Jazzmus/yolo_weigths/yolov11s_20241108.pt"
 
+# Step 1: Segment staves with YOLO
+print("Step 1: YOLO Staff Segmentation")
+print("-" * 60)
+cropped_systems = segment_staves(
+    image_path=image_path,
+    yolo_model_path=yolo_model_path,
+    confidence_threshold=0.5
+    )
+print(f"✓ Segmented into {len(cropped_systems)} systems\n")
+
+# Step 2: Load SMT inference model
+print("Step 2: Load Recognition Model")
+print("-" * 60)
+inference_model = FullPageInference(checkpint_path, device=device)
+print(f"✓ Model loaded\n")
+
+# Step 3: Recognize each system
+print("Step 3: System-by-System Recognition")
+print("-" * 60)
+predictions = recognize_systems(cropped_systems, model, device=device)
+# system_kerns = []
+# for i, system_image in enumerate(cropped_systems):
+#     print(f"  System {i+1}/{len(cropped_systems)}...", end=" ")
+#     result = inference_model.predict(system_image)
+#     system_kerns.append(result['prediction'])
+#     print("✓")
+print(f"✓ Recognized {len(predictions)} systems\n")
+
+# Step 4: Concatenate into full-page **kern
+print("Step 4: Concatenate Systems")
+print("-" * 60)
 full_page_kern = concatenate_systems(predictions)
-print("\nFull-page **kern prediction:")
+print(f"✓ Concatenated into full-page **kern\n")
 print(full_page_kern)
+
+
+# predictions = recognize_systems(cropped_systems, model, device=device)
+# print("testing Predictions:")
+# print(predictions[0])
+
+# full_page_kern = concatenate_systems(predictions)
+# print("\nFull-page **kern prediction:")
+# print(full_page_kern)
 
 
