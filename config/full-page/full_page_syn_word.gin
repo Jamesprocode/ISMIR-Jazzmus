@@ -1,0 +1,13 @@
+FullPageGrandStaffDataset.data_path = "data/jazzmus_fullpage"
+FullPageGrandStaffDataset.vocab_name = "vocab"
+FullPageGrandStaffDataset.num_workers = 4
+GrandStaffFullPage.fixed_img_height = 800
+GrandStaffFullPage.max_fix_img_width = 1400
+GrandStaffFullPage.include_synthetic = True
+
+# MODEL
+SMT_Trainer.warmup_steps = 150
+SMT_Trainer.load_pretrained = True
+
+# ENCODING
+GrandStaffFullPage.tokenizer_type = "word"
