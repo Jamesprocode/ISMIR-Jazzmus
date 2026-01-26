@@ -344,7 +344,7 @@ def run_system_level_evaluation(
                 img_name = Path(parent_result['image']).stem
                 print(f"  {i+1}. {img_name} - System {m['system_idx']}: CER={m['cer']:.2f}%, SER={m['ser']:.2f}%")
 
-            # Save top 10 worst cropped system images
+            # Save top 10 worst cropped system images with prediction and ground truth
             if save_visualizations:
                 worst_crops_dir = f"{viz_output_dir}/worst_crops"
                 Path(worst_crops_dir).mkdir(parents=True, exist_ok=True)
@@ -352,10 +352,21 @@ def run_system_level_evaluation(
                 for i, m in enumerate(outliers[:10]):
                     parent_result = next(r for r in valid_results if m in r['system_metrics'])
                     img_name = Path(parent_result['image']).stem
+                    base_filename = f"{i+1:02d}_{img_name}_sys{m['system_idx']}_CER{m['cer']:.1f}"
+
+                    # Save cropped image
                     crop_img = m['crop']
-                    crop_filename = f"{worst_crops_dir}/{i+1:02d}_{img_name}_sys{m['system_idx']}_CER{m['cer']:.1f}.jpg"
-                    crop_img.save(crop_filename)
-                    print(f"  Saved: {crop_filename}")
+                    crop_img.save(f"{worst_crops_dir}/{base_filename}.jpg")
+
+                    # Save predicted kern
+                    with open(f"{worst_crops_dir}/{base_filename}_pred.txt", 'w') as f:
+                        f.write(m['prediction'])
+
+                    # Save ground truth kern
+                    with open(f"{worst_crops_dir}/{base_filename}_gt.txt", 'w') as f:
+                        f.write(m['ground_truth'])
+
+                    print(f"  Saved: {base_filename} (.jpg, _pred.txt, _gt.txt)")
 
     print(f"\nFailed samples: {len(failed_samples)}")
     print("="*60)
