@@ -89,7 +89,8 @@ def evaluate_systems(
         'n_yolo_crops': n_crops,
         'n_gt_systems': n_gt,
         'count_mismatch': n_crops != n_gt,
-        'system_metrics': []
+        'system_metrics': [],
+        'crops': yolo_crops  # Store crops for later visualization
     }
 
     # If counts don't match, flag as YOLO detection error
@@ -115,7 +116,8 @@ def evaluate_systems(
             'ser': ser,
             'ler': ler,
             'prediction': prediction,
-            'ground_truth': gt
+            'ground_truth': gt,
+            'crop': crop  # Store crop image for this system
         })
 
     return result
@@ -194,7 +196,7 @@ def run_system_level_evaluation(
             yolo_crops = segment_staves(
                 image_path=img_path,
                 yolo_model_path=yolo_model_path,
-                confidence_threshold=0.5
+                confidence_threshold=0.3
             )
 
             # Step 2: Extract GT systems
@@ -206,12 +208,16 @@ def run_system_level_evaluation(
             result = evaluate_systems(yolo_crops, gt_systems, inference_model, img_path)
             all_results.append(result)
 
-            # Step 4: Optional visualization
+            # Step 4: Optional visualization for count mismatches
             if save_visualizations and result.get('count_mismatch', False):
-                # Save visualization for samples with count mismatch
                 img_name = Path(img_path).stem
-                viz_path = f"{viz_output_dir}/{img_name}_yolo.jpg"
+                # Save YOLO bounding box visualization
+                viz_path = f"{viz_output_dir}/mismatch/{img_name}_yolo.jpg"
+                Path(f"{viz_output_dir}/mismatch").mkdir(parents=True, exist_ok=True)
                 save_yolo_visualization(img_path, yolo_model_path, viz_path)
+                # Save original full page image
+                original_path = f"{viz_output_dir}/mismatch/{img_name}_original.jpg"
+                Image.open(img_path).save(original_path)
 
         except Exception as e:
             print(f"\n✗ Failed on {img_path}: {e}")
@@ -267,6 +273,19 @@ def run_system_level_evaluation(
                 parent_result = next(r for r in valid_results if m in r['system_metrics'])
                 img_name = Path(parent_result['image']).stem
                 print(f"  {i+1}. {img_name} - System {m['system_idx']}: CER={m['cer']:.2f}%, SER={m['ser']:.2f}%")
+
+            # Save top 10 worst cropped system images
+            if save_visualizations:
+                worst_crops_dir = f"{viz_output_dir}/worst_crops"
+                Path(worst_crops_dir).mkdir(parents=True, exist_ok=True)
+                print(f"\nSaving top 10 worst cropped systems to {worst_crops_dir}/")
+                for i, m in enumerate(outliers[:10]):
+                    parent_result = next(r for r in valid_results if m in r['system_metrics'])
+                    img_name = Path(parent_result['image']).stem
+                    crop_img = m['crop']
+                    crop_filename = f"{worst_crops_dir}/{i+1:02d}_{img_name}_sys{m['system_idx']}_CER{m['cer']:.1f}.jpg"
+                    crop_img.save(crop_filename)
+                    print(f"  Saved: {crop_filename}")
 
     print(f"\nFailed samples: {len(failed_samples)}")
     print("="*60)
