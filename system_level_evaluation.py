@@ -147,7 +147,7 @@ def save_yolo_visualization(
     image_path: str,
     yolo_model_path: str,
     output_path: str,
-    confidence_threshold: float = 0.5
+    confidence_threshold: float = 0.2
 ):
     """
     Save visualization of YOLO bounding boxes on the original image.
@@ -216,7 +216,7 @@ def run_system_level_evaluation(
             yolo_crops = segment_staves(
                 image_path=img_path,
                 yolo_model_path=yolo_model_path,
-                confidence_threshold=0.3
+                confidence_threshold=0.2
             )
 
             # Step 2: Extract GT systems

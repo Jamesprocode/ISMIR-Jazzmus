@@ -59,8 +59,8 @@ def segment_staves(
     #extend top and bottom of each box by 10 pixels
     extended_staff_boxes = []
     for y_center, (x1, y1, x2, y2) in staff_boxes:
-        extended_y1 = max(0, y1 - 60)
-        extended_y2 = min(image.height, y2 + 60)
+        extended_y1 = max(0, y1 - 30)
+        extended_y2 = min(image.height, y2 + 30)
         extended_staff_boxes.append((y_center, (x1, extended_y1, x2, extended_y2)))
     staff_boxes = extended_staff_boxes
 
