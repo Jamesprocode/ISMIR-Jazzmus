@@ -14,8 +14,13 @@ import cv2
 from pathlib import Path
 
 from full_page_baseline import segment_staves
-from inference import FullPageInference
+from inference import FullPageInference, extract_spines, filter_chord_spine
 from jazzmus.dataset.eval_functions import compute_poliphony_metrics
+from chord_metrics import (
+    compute_all_chord_metrics,
+    print_chord_metrics,
+    extract_chords_from_mxhm,
+)
 
 
 def extract_gt_systems(full_page_gt: str) -> List[str]:
@@ -107,10 +112,10 @@ def evaluate_systems(
         pred_result = inference_model.predict(system_array)
         prediction = pred_result['prediction']
 
-        # Compute metrics for this system
+        # Compute standard metrics for this system
         cer, ser, ler = compute_poliphony_metrics([prediction], [gt])
 
-        result['system_metrics'].append({
+        system_result = {
             'system_idx': i,
             'cer': cer,
             'ser': ser,
@@ -118,7 +123,22 @@ def evaluate_systems(
             'prediction': prediction,
             'ground_truth': gt,
             'crop': crop  # Store crop image for this system
-        })
+        }
+
+        # Compute chord-specific metrics if **mxhm spine exists
+        try:
+            pred_spines = extract_spines(prediction)
+            gt_spines = extract_spines(gt)
+            if '**mxhm' in pred_spines and '**mxhm' in gt_spines:
+                chord_metrics = compute_all_chord_metrics(
+                    pred_spines['**mxhm'],
+                    gt_spines['**mxhm']
+                )
+                system_result['chord_metrics'] = chord_metrics
+        except Exception as e:
+            system_result['chord_metrics_error'] = str(e)
+
+        result['system_metrics'].append(system_result)
 
     return result
 
@@ -259,11 +279,61 @@ def run_system_level_evaluation(
         print(f"  SER: {np.mean(sers):.2f}% ± {np.std(sers):.2f}%")
         print(f"  LER: {np.mean(lers):.2f}% ± {np.std(lers):.2f}%")
 
+        # Aggregate chord-specific metrics
+        chord_systems = [m for m in all_system_metrics if 'chord_metrics' in m]
+        if chord_systems:
+            print(f"\n--- CHORD-SPECIFIC METRICS ({len(chord_systems)} systems) ---")
+
+            # Aggregate root F1
+            root_correct = sum(m['chord_metrics']['root_f1']['correct'] for m in chord_systems)
+            root_pred = sum(m['chord_metrics']['root_f1']['pred_count'] for m in chord_systems)
+            root_gt = sum(m['chord_metrics']['root_f1']['gt_count'] for m in chord_systems)
+            root_precision = root_correct / root_pred * 100 if root_pred > 0 else 0
+            root_recall = root_correct / root_gt * 100 if root_gt > 0 else 0
+            root_f1 = 2 * root_precision * root_recall / (root_precision + root_recall) if (root_precision + root_recall) > 0 else 0
+
+            print(f"\nRoot Detection (aggregate):")
+            print(f"  Precision: {root_precision:.2f}%")
+            print(f"  Recall: {root_recall:.2f}%")
+            print(f"  F1: {root_f1:.2f}%")
+
+            # Aggregate quality accuracy
+            qual_correct = sum(m['chord_metrics']['quality']['correct'] for m in chord_systems)
+            qual_total = sum(m['chord_metrics']['quality']['total_root_matches'] for m in chord_systems)
+            qual_acc = qual_correct / qual_total * 100 if qual_total > 0 else 0
+
+            print(f"\nQuality Accuracy (where roots match):")
+            print(f"  Accuracy: {qual_acc:.2f}% ({qual_correct}/{qual_total})")
+
+            # Aggregate extension accuracy
+            ext_correct = sum(m['chord_metrics']['extension']['correct'] for m in chord_systems)
+            ext_total = sum(m['chord_metrics']['extension']['total_root_matches'] for m in chord_systems)
+            ext_acc = ext_correct / ext_total * 100 if ext_total > 0 else 0
+
+            print(f"\nExtension Accuracy (where roots match):")
+            print(f"  Accuracy: {ext_acc:.2f}% ({ext_correct}/{ext_total})")
+
+            # Aggregate full chord accuracy
+            full_correct = sum(m['chord_metrics']['full_chord']['correct'] for m in chord_systems)
+            full_total = sum(m['chord_metrics']['full_chord']['total'] for m in chord_systems)
+            full_acc = full_correct / full_total * 100 if full_total > 0 else 0
+
+            print(f"\nFull Chord Match (root + quality + extension):")
+            print(f"  Accuracy: {full_acc:.2f}% ({full_correct}/{full_total})")
+
+            # Count alignment mismatches
+            count_mismatches_chord = sum(
+                1 for m in chord_systems
+                if not m['chord_metrics']['alignment']['counts_match']
+            )
+            print(f"\nChord count mismatches: {count_mismatches_chord}/{len(chord_systems)} systems")
+
         # Find outliers (systems with high error rates)
         cer_threshold = np.mean(cers) + 2 * np.std(cers)
         outliers = [m for m in all_system_metrics if m['cer'] > cer_threshold]
 
-        print(f"\nOutliers (CER > {cer_threshold:.2f}%): {len(outliers)} systems")
+        print(f"\n--- OUTLIER ANALYSIS ---")
+        print(f"Outliers (CER > {cer_threshold:.2f}%): {len(outliers)} systems")
         if outliers:
             # Sort by CER descending
             outliers.sort(key=lambda x: x['cer'], reverse=True)
