@@ -116,13 +116,18 @@ def evaluate_systems(
         'crops': yolo_crops  # Store crops for later visualization
     }
 
-    # If counts don't match, flag as YOLO detection error
+    # Flag count mismatch but still evaluate what we can
     if n_crops != n_gt:
-        result['warning'] = f"YOLO detected {n_crops} systems but GT has {n_gt} systems"
-        return result
+        if n_crops > n_gt:
+            result['warning'] = f"YOLO detected {n_crops} systems but GT has {n_gt} (ignoring {n_crops - n_gt} extra crops)"
+        else:
+            result['warning'] = f"YOLO detected {n_crops} systems but GT has {n_gt} (YOLO missed {n_gt - n_crops} systems)"
 
-    # Evaluate each system
-    for i, (crop, gt) in enumerate(zip(yolo_crops, gt_systems)):
+    # Evaluate min(n_crops, n_gt) systems
+    n_eval = min(n_crops, n_gt)
+    for i in range(n_eval):
+        crop = yolo_crops[i]
+        gt = gt_systems[i]
         # Convert crop to numpy array for inference
         system_array = np.array(crop.convert('L'))
 
@@ -352,13 +357,19 @@ def run_system_level_evaluation(
             print(f"\nExtension Accuracy (where roots match):")
             print(f"  Accuracy: {ext_acc:.2f}% ({ext_correct}/{ext_total})")
 
-            # Aggregate full chord accuracy
+            # Aggregate full chord P/R/F1
             full_correct = sum(m['chord_metrics']['full_chord']['correct'] for m in chord_systems)
-            full_total = sum(m['chord_metrics']['full_chord']['total'] for m in chord_systems)
-            full_acc = full_correct / full_total * 100 if full_total > 0 else 0
+            full_pred = sum(m['chord_metrics']['full_chord']['pred_count'] for m in chord_systems)
+            full_gt = sum(m['chord_metrics']['full_chord']['gt_count'] for m in chord_systems)
+
+            full_precision = full_correct / full_pred * 100 if full_pred > 0 else 0
+            full_recall = full_correct / full_gt * 100 if full_gt > 0 else 0
+            full_f1 = 2 * full_precision * full_recall / (full_precision + full_recall) if (full_precision + full_recall) > 0 else 0
 
             print(f"\nFull Chord Match (root + quality + extension):")
-            print(f"  Accuracy: {full_acc:.2f}% ({full_correct}/{full_total})")
+            print(f"  Precision: {full_precision:.2f}% ({full_correct}/{full_pred} predicted)")
+            print(f"  Recall:    {full_recall:.2f}% ({full_correct}/{full_gt} GT)")
+            print(f"  F1:        {full_f1:.2f}%")
 
             # Count alignment mismatches
             count_mismatches_chord = sum(

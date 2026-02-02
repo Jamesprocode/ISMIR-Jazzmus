@@ -486,9 +486,9 @@ def compute_extension_accuracy(pred_chords: List[str], gt_chords: List[str]) -> 
 
 def compute_full_chord_accuracy(pred_chords: List[str], gt_chords: List[str]) -> Dict[str, float]:
     """
-    Compute full chord match accuracy (root + quality + extension all correct).
+    Compute full chord match metrics (root + quality + extension all correct).
 
-    Position-based: only counts exact matches at same position.
+    Position-based comparison with precision/recall/F1 to handle count differences.
     """
     pred_parsed = [parse_chord(c) for c in pred_chords]
     gt_parsed = [parse_chord(c) for c in gt_chords]
@@ -496,24 +496,39 @@ def compute_full_chord_accuracy(pred_chords: List[str], gt_chords: List[str]) ->
     min_len = min(len(pred_parsed), len(gt_parsed))
 
     full_correct = 0
-    total_valid = 0
+    total_valid_gt = 0
+    total_valid_pred = 0
 
+    # Count valid chords in each
+    for p in pred_parsed:
+        if p.root is not None:
+            total_valid_pred += 1
+    for g in gt_parsed:
+        if g.root is not None:
+            total_valid_gt += 1
+
+    # Position-based matching
     for i in range(min_len):
         pred, gt = pred_parsed[i], gt_parsed[i]
 
-        if gt.root is not None:
-            total_valid += 1
+        if gt.root is not None and pred.root is not None:
             if (pred.root == gt.root and
                 pred.quality == gt.quality and
                 pred.extension == gt.extension):
                 full_correct += 1
 
-    accuracy = full_correct / total_valid * 100 if total_valid > 0 else 0.0
+    # Compute P/R/F1
+    precision = full_correct / total_valid_pred * 100 if total_valid_pred > 0 else 0.0
+    recall = full_correct / total_valid_gt * 100 if total_valid_gt > 0 else 0.0
+    f1 = 2 * precision * recall / (precision + recall) if (precision + recall) > 0 else 0.0
 
     return {
-        'accuracy': accuracy,
+        'precision': precision,
+        'recall': recall,
+        'f1': f1,
         'correct': full_correct,
-        'total': total_valid,
+        'pred_count': total_valid_pred,
+        'gt_count': total_valid_gt,
     }
 
 
@@ -628,8 +643,9 @@ def print_chord_metrics(metrics: Dict, verbose: bool = True):
     # Full chord
     full = metrics['full_chord']
     print(f"\nFull Chord Match:")
-    print(f"  Accuracy: {full['accuracy']:.2f}%")
-    print(f"  Correct: {full['correct']}/{full['total']}")
+    print(f"  Precision: {full['precision']:.2f}% ({full['correct']}/{full['pred_count']} predicted)")
+    print(f"  Recall:    {full['recall']:.2f}% ({full['correct']}/{full['gt_count']} GT)")
+    print(f"  F1:        {full['f1']:.2f}%")
 
     print("=" * 60)
 
