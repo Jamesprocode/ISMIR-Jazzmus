@@ -23,23 +23,21 @@ from chord_metrics import (
 )
 
 
-def extract_gt_systems(full_page_gt: str, exclude_sections: List[str] = None) -> Tuple[List[str], List[int]]:
+def extract_gt_systems(full_page_gt: str) -> Tuple[List[str], List[int]]:
     """
     Extract system-level ground truth from full-page **kern by splitting on linebreak markers.
 
+    Systems containing any line starting with !LO are excluded (Solo, Coda, etc.)
+    to match training data preprocessing.
+
     Args:
         full_page_gt: Full-page **kern string with !!linebreak:original markers
-        exclude_sections: List of section keywords to exclude (e.g., ['Solo', 'Coda'])
-                         Matches against !LO:TX:a:t=<keyword> markers
 
     Returns:
         Tuple of:
             - List of **kern strings, one per system (excluding filtered sections)
             - List of original system indices (for debugging which were kept)
     """
-    if exclude_sections is None:
-        exclude_sections = ['Solo', 'Coda']  # Default sections to exclude
-
     lines = full_page_gt.strip().split('\n')
 
     systems = []
@@ -61,16 +59,10 @@ def extract_gt_systems(full_page_gt: str, exclude_sections: List[str] = None) ->
         # Check for linebreak marker
         if line.strip() == '!!linebreak:original':
             if current_system_lines:
-                # Check if this system should be excluded
-                system_text = '\n'.join(current_system_lines)
-                should_exclude = False
-                for section in exclude_sections:
-                    # Match patterns like !LO:TX:a:t=Solo Section, !LO:TX:a:t=Coda, etc.
-                    if f'!LO:TX:a:t={section}' in system_text or f'!LO:TX:t={section}' in system_text:
-                        should_exclude = True
-                        break
+                # Exclude systems containing any !LO line (Solo, Coda, etc.)
+                has_lo_marker = any(l.startswith('!LO') for l in current_system_lines)
 
-                if not should_exclude:
+                if not has_lo_marker:
                     # Build complete system with headers
                     system = '\n'.join(header_lines + current_system_lines + ['*-\t*-'])
                     systems.append(system)
@@ -84,14 +76,9 @@ def extract_gt_systems(full_page_gt: str, exclude_sections: List[str] = None) ->
 
     # Add final system if any content remains
     if current_system_lines:
-        system_text = '\n'.join(current_system_lines)
-        should_exclude = False
-        for section in exclude_sections:
-            if f'!LO:TX:a:t={section}' in system_text or f'!LO:TX:t={section}' in system_text:
-                should_exclude = True
-                break
+        has_lo_marker = any(l.startswith('!LO') for l in current_system_lines)
 
-        if not should_exclude:
+        if not has_lo_marker:
             system = '\n'.join(header_lines + current_system_lines + ['*-\t*-'])
             systems.append(system)
             system_indices.append(current_system_idx)
@@ -250,10 +237,10 @@ def run_system_level_evaluation(
                 confidence_threshold=0.2
             )
 
-            # Step 2: Extract GT systems
+            # Step 2: Extract GT systems (excluding Solo/Coda sections)
             with open(gt_path, 'r') as f:
                 full_page_gt = f.read()
-            gt_systems = extract_gt_systems(full_page_gt)
+            gt_systems, gt_system_indices = extract_gt_systems(full_page_gt)
 
             # Step 3: Evaluate each system
             result = evaluate_systems(yolo_crops, gt_systems, inference_model, img_path)
