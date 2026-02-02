@@ -283,8 +283,8 @@ def run_system_level_evaluation(
         if len(count_mismatches) > 5:
             print(f"  ... and {len(count_mismatches) - 5} more")
 
-    # Aggregate per-system metrics (only for samples with matching counts)
-    valid_results = [r for r in all_results if not r.get('count_mismatch', False)]
+    # Aggregate per-system metrics (include all samples, even with count mismatches)
+    valid_results = all_results  # Now we evaluate partial matches too
     all_system_metrics = []
 
     for result in valid_results:
