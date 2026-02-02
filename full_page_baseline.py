@@ -21,6 +21,94 @@ import cv2
 import numpy as np
 
 
+def detect_skew_angle(image: np.ndarray, max_angle: float = 5.0) -> float:
+    """
+    Detect skew angle of a music score image using Hough line detection.
+
+    Finds horizontal lines (staff lines) and computes their average angle.
+
+    Args:
+        image: Grayscale image as numpy array
+        max_angle: Maximum expected rotation in degrees (default ±5°)
+
+    Returns:
+        Detected skew angle in degrees (positive = clockwise rotation needed)
+    """
+    # Ensure grayscale
+    if len(image.shape) == 3:
+        gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
+    else:
+        gray = image.copy()
+
+    # Edge detection
+    edges = cv2.Canny(gray, 50, 150, apertureSize=3)
+
+    # Hough line detection - look for long horizontal lines (staff lines)
+    lines = cv2.HoughLinesP(
+        edges,
+        rho=1,
+        theta=np.pi / 180,
+        threshold=100,
+        minLineLength=image.shape[1] // 4,  # At least 1/4 page width
+        maxLineGap=10
+    )
+
+    if lines is None or len(lines) == 0:
+        return 0.0
+
+    # Compute angles of detected lines
+    angles = []
+    for line in lines:
+        x1, y1, x2, y2 = line[0]
+        if x2 - x1 == 0:
+            continue
+        angle = np.degrees(np.arctan2(y2 - y1, x2 - x1))
+        # Only consider near-horizontal lines (within max_angle of horizontal)
+        if abs(angle) <= max_angle:
+            angles.append(angle)
+
+    if not angles:
+        return 0.0
+
+    # Return median angle (robust to outliers)
+    return np.median(angles)
+
+
+def deskew_image(image: Image.Image, max_angle: float = 5.0) -> Image.Image:
+    """
+    Correct rotation/skew in a music score image.
+
+    Args:
+        image: PIL Image to deskew
+        max_angle: Maximum expected rotation in degrees
+
+    Returns:
+        Deskewed PIL Image
+    """
+    # Convert to numpy for processing
+    img_array = np.array(image)
+
+    # Detect skew angle
+    angle = detect_skew_angle(img_array, max_angle)
+
+    if abs(angle) < 0.1:  # Skip if nearly straight
+        return image
+
+    print(f"  Detected skew: {angle:.2f}° - correcting...")
+
+    # Rotate to correct skew
+    # Use PIL for rotation (better quality with anti-aliasing)
+    # Negative angle because we want to counter-rotate
+    corrected = image.rotate(
+        -angle,
+        resample=Image.BICUBIC,
+        expand=True,  # Expand canvas to fit rotated image
+        fillcolor='white'  # Fill new areas with white
+    )
+
+    return corrected
+
+
 def compute_dynamic_boundaries(
     staff_boxes: List[Tuple[float, Tuple[int, int, int, int]]],
     image_height: int,
@@ -103,7 +191,9 @@ def segment_staves(
     yolo_model_path: str,
     confidence_threshold: float = 0.5,
     top_ratio: float = 0.7,
-    bottom_ratio: float = 0.3
+    bottom_ratio: float = 0.3,
+    deskew: bool = False,
+    max_skew_angle: float = 5.0
 ) -> List[Image.Image]:
     """
     Detect staff systems in a full-page image and return cropped regions.
@@ -118,6 +208,8 @@ def segment_staves(
         confidence_threshold: Minimum confidence for staff detection
         top_ratio: Fraction of gap given to system below for chords (default 0.7)
         bottom_ratio: Fraction of gap given to system above (default 0.3)
+        deskew: Whether to correct rotation before processing (default False)
+        max_skew_angle: Maximum expected rotation in degrees (default 5.0)
 
     Returns:
         List of PIL Images, one per detected staff system, sorted top-to-bottom
@@ -128,8 +220,12 @@ def segment_staves(
     # Load image
     image = Image.open(image_path).convert("RGB")
 
-    # Run detection
-    results = model(image_path, conf=confidence_threshold, verbose=False)
+    # Optional: Deskew before YOLO detection
+    if deskew:
+        image = deskew_image(image, max_skew_angle)
+
+    # Run detection (use image object, not path, in case we deskewed)
+    results = model(image, conf=confidence_threshold, verbose=False)
     result = results[0]
 
     # Extract staff bounding boxes
@@ -428,7 +524,9 @@ if __name__ == "__main__":
             cropped_systems = segment_staves(
                 image_path=img_path,
                 yolo_model_path=yolo_model_path,
-                confidence_threshold=0.5
+                confidence_threshold=0.5,
+                deskew=True,
+                max_skew_angle=10.0
             )
 
             # Step 2: Recognize each system
