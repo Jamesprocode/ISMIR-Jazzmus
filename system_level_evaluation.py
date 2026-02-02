@@ -23,22 +23,31 @@ from chord_metrics import (
 )
 
 
-def extract_gt_systems(full_page_gt: str) -> List[str]:
+def extract_gt_systems(full_page_gt: str, exclude_sections: List[str] = None) -> Tuple[List[str], List[int]]:
     """
     Extract system-level ground truth from full-page **kern by splitting on linebreak markers.
 
     Args:
         full_page_gt: Full-page **kern string with !!linebreak:original markers
+        exclude_sections: List of section keywords to exclude (e.g., ['Solo', 'Coda'])
+                         Matches against !LO:TX:a:t=<keyword> markers
 
     Returns:
-        List of **kern strings, one per system
+        Tuple of:
+            - List of **kern strings, one per system (excluding filtered sections)
+            - List of original system indices (for debugging which were kept)
     """
+    if exclude_sections is None:
+        exclude_sections = ['Solo', 'Coda']  # Default sections to exclude
+
     lines = full_page_gt.strip().split('\n')
 
     systems = []
+    system_indices = []  # Track which original indices were kept
     current_system_lines = []
     header_lines = []
     in_header = True
+    current_system_idx = 0
 
     for line in lines:
         # Collect header lines (before first content)
@@ -52,20 +61,42 @@ def extract_gt_systems(full_page_gt: str) -> List[str]:
         # Check for linebreak marker
         if line.strip() == '!!linebreak:original':
             if current_system_lines:
-                # Build complete system with headers
-                system = '\n'.join(header_lines + current_system_lines + ['*-\t*-'])
-                systems.append(system)
+                # Check if this system should be excluded
+                system_text = '\n'.join(current_system_lines)
+                should_exclude = False
+                for section in exclude_sections:
+                    # Match patterns like !LO:TX:a:t=Solo Section, !LO:TX:a:t=Coda, etc.
+                    if f'!LO:TX:a:t={section}' in system_text or f'!LO:TX:t={section}' in system_text:
+                        should_exclude = True
+                        break
+
+                if not should_exclude:
+                    # Build complete system with headers
+                    system = '\n'.join(header_lines + current_system_lines + ['*-\t*-'])
+                    systems.append(system)
+                    system_indices.append(current_system_idx)
+
                 current_system_lines = []
+                current_system_idx += 1
         elif line.strip() and not line.startswith('*-'):
             # Add content line (skip spine terminators and empty lines)
             current_system_lines.append(line)
 
     # Add final system if any content remains
     if current_system_lines:
-        system = '\n'.join(header_lines + current_system_lines + ['*-\t*-'])
-        systems.append(system)
+        system_text = '\n'.join(current_system_lines)
+        should_exclude = False
+        for section in exclude_sections:
+            if f'!LO:TX:a:t={section}' in system_text or f'!LO:TX:t={section}' in system_text:
+                should_exclude = True
+                break
 
-    return systems
+        if not should_exclude:
+            system = '\n'.join(header_lines + current_system_lines + ['*-\t*-'])
+            systems.append(system)
+            system_indices.append(current_system_idx)
+
+    return systems, system_indices
 
 
 def evaluate_systems(
