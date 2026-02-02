@@ -21,18 +21,80 @@ import cv2
 import numpy as np
 
 
+def compute_dynamic_boundaries(
+    staff_boxes: List[Tuple[float, Tuple[int, int, int, int]]],
+    image_height: int,
+    top_ratio: float = 0.7,
+    bottom_ratio: float = 0.3
+) -> List[Tuple[int, int, int, int]]:
+    """
+    Compute non-overlapping crop boundaries for each staff.
+
+    Gap between systems is split: 70% to system below (for chords),
+    30% to system above.
+
+    Args:
+        staff_boxes: List of (y_center, (x1, y1, x2, y2)) sorted top-to-bottom
+        image_height: Total image height
+        top_ratio: Fraction of gap given to system below (default 0.7)
+        bottom_ratio: Fraction of gap given to system above (default 0.3)
+
+    Returns:
+        List of (x1, crop_top, x2, crop_bottom) for each staff
+    """
+    n = len(staff_boxes)
+    boundaries = []
+
+    for i in range(n):
+        _, (x1, y1, x2, y2) = staff_boxes[i]
+
+        # Compute top boundary
+        if i == 0:
+            # First system: extend to image top
+            crop_top = 0
+        else:
+            # Gap between previous system's bottom and this system's top
+            _, (_, _, _, prev_y2) = staff_boxes[i - 1]
+            gap = y1 - prev_y2
+            # This system gets top_ratio (70%) of the gap for its chords
+            crop_top = prev_y2 + int(gap * bottom_ratio)
+
+        # Compute bottom boundary
+        if i == n - 1:
+            # Last system: extend to image bottom
+            crop_bottom = image_height
+        else:
+            # Gap between this system's bottom and next system's top
+            _, (_, next_y1, _, _) = staff_boxes[i + 1]
+            gap = next_y1 - y2
+            # This system gets bottom_ratio (30%) of the gap
+            crop_bottom = y2 + int(gap * bottom_ratio)
+
+        boundaries.append((x1, crop_top, x2, crop_bottom))
+
+    return boundaries
+
+
 def segment_staves(
     image_path: str,
     yolo_model_path: str,
-    confidence_threshold: float = 0.5
+    confidence_threshold: float = 0.5,
+    top_ratio: float = 0.7,
+    bottom_ratio: float = 0.3
 ) -> List[Image.Image]:
     """
     Detect staff systems in a full-page image and return cropped regions.
 
+    Uses dynamic boundary computation:
+    - No overlapping between crops
+    - Gap between systems split 70/30 (favoring top for chord symbols)
+
     Args:
         image_path: Path to the full-page jazz lead sheet image
         yolo_model_path: Path to YOLO model weights (.pt file)
-        confidence_threshold: Minimum confidence for staff detection (default: 0.5)
+        confidence_threshold: Minimum confidence for staff detection
+        top_ratio: Fraction of gap given to system below for chords (default 0.7)
+        bottom_ratio: Fraction of gap given to system above (default 0.3)
 
     Returns:
         List of PIL Images, one per detected staff system, sorted top-to-bottom
@@ -56,22 +118,18 @@ def segment_staves(
             y_center = (y1 + y2) / 2
             staff_boxes.append((y_center, (x1, y1, x2, y2)))
 
-    #extend top and bottom of each box by 10 pixels
-    extended_staff_boxes = []
-    for y_center, (x1, y1, x2, y2) in staff_boxes:
-        extended_y1 = max(0, y1 - 30)
-        extended_y2 = min(image.height, y2 + 30)
-        extended_staff_boxes.append((y_center, (x1, extended_y1, x2, extended_y2)))
-    staff_boxes = extended_staff_boxes
-
     # Sort by vertical position (top to bottom)
     staff_boxes.sort(key=lambda x: x[0])
-    
+
+    # Compute dynamic non-overlapping boundaries
+    boundaries = compute_dynamic_boundaries(
+        staff_boxes, image.height, top_ratio, bottom_ratio
+    )
 
     # Crop each system
     cropped_systems = []
-    for _, (x1, y1, x2, y2) in staff_boxes:
-        cropped = image.crop((x1, y1, x2, y2))
+    for x1, crop_top, x2, crop_bottom in boundaries:
+        cropped = image.crop((x1, crop_top, x2, crop_bottom))
         cropped_systems.append(cropped)
 
     print(f"Detected and cropped {len(cropped_systems)} staff systems")
