@@ -349,6 +349,54 @@ def run_system_level_evaluation(
             )
             print(f"\nChord count mismatches: {count_mismatches_chord}/{len(chord_systems)} systems")
 
+            # Find systems with worst chord count mismatches
+            systems_with_mismatch = [
+                m for m in chord_systems
+                if not m['chord_metrics']['alignment']['counts_match']
+            ]
+            # Sort by absolute count difference (biggest mismatches first)
+            systems_with_mismatch.sort(
+                key=lambda x: abs(x['chord_metrics']['alignment']['count_diff']),
+                reverse=True
+            )
+
+            if systems_with_mismatch:
+                print(f"\nTop 10 worst chord count mismatches:")
+                for i, m in enumerate(systems_with_mismatch[:10]):
+                    parent_result = next(r for r in valid_results if m in r['system_metrics'])
+                    img_name = Path(parent_result['image']).stem
+                    diff = m['chord_metrics']['alignment']['count_diff']
+                    pred_cnt = m['chord_metrics']['alignment']['pred_count']
+                    gt_cnt = m['chord_metrics']['alignment']['gt_count']
+                    diff_str = f"+{diff}" if diff > 0 else str(diff)
+                    error_type = "insertions" if diff > 0 else "deletions"
+                    print(f"  {i+1}. {img_name} - System {m['system_idx']}: "
+                          f"pred={pred_cnt}, gt={gt_cnt} ({diff_str} {error_type})")
+
+                # Save top 10 chord mismatch crops
+                if save_visualizations:
+                    chord_mismatch_dir = f"{viz_output_dir}/chord_mismatch_crops"
+                    Path(chord_mismatch_dir).mkdir(parents=True, exist_ok=True)
+                    print(f"\nSaving top 10 chord mismatch systems to {chord_mismatch_dir}/")
+                    for i, m in enumerate(systems_with_mismatch[:10]):
+                        parent_result = next(r for r in valid_results if m in r['system_metrics'])
+                        img_name = Path(parent_result['image']).stem
+                        diff = m['chord_metrics']['alignment']['count_diff']
+                        diff_str = f"+{diff}" if diff > 0 else str(diff)
+                        base_filename = f"{i+1:02d}_{img_name}_sys{m['system_idx']}_diff{diff_str}"
+
+                        # Save cropped image
+                        crop_img = m['crop']
+                        crop_img.save(f"{chord_mismatch_dir}/{base_filename}.jpg")
+
+                        # Save predicted and GT kern
+                        with open(f"{chord_mismatch_dir}/{base_filename}_pred.txt", 'w') as f:
+                            f.write(m['prediction'])
+                        with open(f"{chord_mismatch_dir}/{base_filename}_gt.txt", 'w') as f:
+                            f.write(m['ground_truth'])
+
+                        print(f"  Saved: {base_filename} (.jpg, _pred.txt, _gt.txt)")
+
         # Find outliers (systems with high error rates)
         cer_threshold = np.mean(cers) + 2 * np.std(cers)
         outliers = [m for m in all_system_metrics if m['cer'] > cer_threshold]
