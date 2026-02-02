@@ -284,7 +284,7 @@ def run_system_level_evaluation(
         if chord_systems:
             print(f"\n--- CHORD-SPECIFIC METRICS ({len(chord_systems)} systems) ---")
 
-            # Aggregate root F1
+            # Aggregate root F1 - Position-based (strict)
             root_correct = sum(m['chord_metrics']['root_f1']['correct'] for m in chord_systems)
             root_pred = sum(m['chord_metrics']['root_f1']['pred_count'] for m in chord_systems)
             root_gt = sum(m['chord_metrics']['root_f1']['gt_count'] for m in chord_systems)
@@ -292,10 +292,31 @@ def run_system_level_evaluation(
             root_recall = root_correct / root_gt * 100 if root_gt > 0 else 0
             root_f1 = 2 * root_precision * root_recall / (root_precision + root_recall) if (root_precision + root_recall) > 0 else 0
 
+            # Aggregate root F1 - LCS (handles insertions/deletions)
+            lcs_correct = sum(m['chord_metrics']['root_f1']['align_correct'] for m in chord_systems)
+            lcs_precision = lcs_correct / root_pred * 100 if root_pred > 0 else 0
+            lcs_recall = lcs_correct / root_gt * 100 if root_gt > 0 else 0
+            lcs_f1 = 2 * lcs_precision * lcs_recall / (lcs_precision + lcs_recall) if (lcs_precision + lcs_recall) > 0 else 0
+
+            # Aggregate root F1 - Windowed (±3 tolerance for line alignment errors)
+            window_correct = sum(m['chord_metrics']['root_f1']['window_correct'] for m in chord_systems)
+            window_precision = window_correct / root_pred * 100 if root_pred > 0 else 0
+            window_recall = window_correct / root_gt * 100 if root_gt > 0 else 0
+            window_f1 = 2 * window_precision * window_recall / (window_precision + window_recall) if (window_precision + window_recall) > 0 else 0
+
             print(f"\nRoot Detection (aggregate):")
-            print(f"  Precision: {root_precision:.2f}%")
-            print(f"  Recall: {root_recall:.2f}%")
-            print(f"  F1: {root_f1:.2f}%")
+            print(f"  ┌───────────────────┬───────────┬──────────┬──────────┐")
+            print(f"  │ Strategy          │ Precision │  Recall  │    F1    │")
+            print(f"  ├───────────────────┼───────────┼──────────┼──────────┤")
+            print(f"  │ Position-based    │  {root_precision:6.2f}%  │  {root_recall:6.2f}% │  {root_f1:6.2f}% │")
+            print(f"  │ Aligned (LCS)     │  {lcs_precision:6.2f}%  │  {lcs_recall:6.2f}% │  {lcs_f1:6.2f}% │")
+            print(f"  │ Windowed (±3)     │  {window_precision:6.2f}%  │  {window_recall:6.2f}% │  {window_f1:6.2f}% │")
+            print(f"  └───────────────────┴───────────┴──────────┴──────────┘")
+            print(f"  Counts: {root_pred} predicted, {root_gt} GT chords")
+            print(f"\n  Interpretation:")
+            print(f"    - If LCS >> Position: insertion/deletion errors dominate")
+            print(f"    - If Windowed >> Position: line alignment shift errors dominate")
+            print(f"    - If all similar: true root detection errors")
 
             # Aggregate quality accuracy
             qual_correct = sum(m['chord_metrics']['quality']['correct'] for m in chord_systems)

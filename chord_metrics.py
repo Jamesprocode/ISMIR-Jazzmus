@@ -265,8 +265,16 @@ def compute_root_f1(pred_chords: List[str], gt_chords: List[str]) -> Dict[str, f
     align_recall = align_correct / len(gt_roots) * 100 if gt_roots else 0.0
     align_f1 = 2 * align_precision * align_recall / (align_precision + align_recall) if (align_precision + align_recall) > 0 else 0.0
 
+    # === Strategy 4: Windowed/Fuzzy Position (±window tolerance) ===
+    window = 3  # Look ±3 positions for a match
+    window_correct, window_used_pred = _windowed_match(pred_roots, gt_roots, window)
+
+    window_precision = window_correct / len(pred_roots) * 100 if pred_roots else 0.0
+    window_recall = window_correct / len(gt_roots) * 100 if gt_roots else 0.0
+    window_f1 = 2 * window_precision * window_recall / (window_precision + window_recall) if (window_precision + window_recall) > 0 else 0.0
+
     return {
-        # Position-based (legacy, strict)
+        # Position-based (strict)
         'precision': pos_precision,
         'recall': pos_recall,
         'f1': pos_f1,
@@ -276,16 +284,66 @@ def compute_root_f1(pred_chords: List[str], gt_chords: List[str]) -> Dict[str, f
         'bag_recall': bag_recall,
         'bag_f1': bag_f1,
         'bag_correct': bag_correct,
-        # Aligned via LCS (recommended)
+        # Aligned via LCS
         'align_precision': align_precision,
         'align_recall': align_recall,
         'align_f1': align_f1,
         'align_correct': align_correct,
+        # Windowed/Fuzzy Position (±3 tolerance) - RECOMMENDED
+        'window_precision': window_precision,
+        'window_recall': window_recall,
+        'window_f1': window_f1,
+        'window_correct': window_correct,
         # Counts
         'pred_count': len(pred_roots),
         'gt_count': len(gt_roots),
         'count_diff': len(pred_chords) - len(gt_chords),
     }
+
+
+def _windowed_match(pred_roots: List[str], gt_roots: List[str], window: int = 3) -> Tuple[int, set]:
+    """
+    Match GT roots to pred roots with a position tolerance window.
+
+    For each GT root at position i, look for a matching pred root
+    at positions [i-window, i+window]. Each pred root can only be
+    matched once (greedy, closest position first).
+
+    Args:
+        pred_roots: List of predicted root notes
+        gt_roots: List of ground truth root notes
+        window: Position tolerance (default ±3)
+
+    Returns:
+        Tuple of (number of matches, set of used pred indices)
+    """
+    if not pred_roots or not gt_roots:
+        return 0, set()
+
+    used_pred_indices = set()
+    matches = 0
+
+    for gt_idx, gt_root in enumerate(gt_roots):
+        # Search window around gt position, closest first
+        search_order = []
+        for offset in range(window + 1):
+            if offset == 0:
+                search_order.append(gt_idx)
+            else:
+                search_order.extend([gt_idx - offset, gt_idx + offset])
+
+        # Find first matching pred root in window that hasn't been used
+        for pred_idx in search_order:
+            if pred_idx < 0 or pred_idx >= len(pred_roots):
+                continue
+            if pred_idx in used_pred_indices:
+                continue
+            if pred_roots[pred_idx] == gt_root:
+                matches += 1
+                used_pred_indices.add(pred_idx)
+                break
+
+    return matches, used_pred_indices
 
 
 def _lcs_count(seq1: List[str], seq2: List[str]) -> int:
@@ -533,16 +591,18 @@ def print_chord_metrics(metrics: Dict, verbose: bool = True):
     print(f"  Difference: {align['count_diff']:+d}")
     print(f"  Counts match: {'Yes' if align['counts_match'] else 'No'}")
 
-    # Root F1 - all three strategies
+    # Root F1 - all four strategies
     root = metrics['root_f1']
-    print(f"\nRoot Detection (3 strategies):")
-    print(f"  ┌─────────────────┬───────────┬──────────┬──────────┐")
-    print(f"  │ Strategy        │ Precision │  Recall  │    F1    │")
-    print(f"  ├─────────────────┼───────────┼──────────┼──────────┤")
-    print(f"  │ Position-based  │  {root['precision']:6.2f}%  │  {root['recall']:6.2f}% │  {root['f1']:6.2f}% │")
-    print(f"  │ Bag-of-roots    │  {root['bag_precision']:6.2f}%  │  {root['bag_recall']:6.2f}% │  {root['bag_f1']:6.2f}% │")
-    print(f"  │ Aligned (LCS)   │  {root['align_precision']:6.2f}%  │  {root['align_recall']:6.2f}% │  {root['align_f1']:6.2f}% │")
-    print(f"  └─────────────────┴───────────┴──────────┴──────────┘")
+    print(f"\nRoot Detection (4 strategies):")
+    print(f"  ┌───────────────────┬───────────┬──────────┬──────────┐")
+    print(f"  │ Strategy          │ Precision │  Recall  │    F1    │")
+    print(f"  ├───────────────────┼───────────┼──────────┼──────────┤")
+    print(f"  │ Position-based    │  {root['precision']:6.2f}%  │  {root['recall']:6.2f}% │  {root['f1']:6.2f}% │")
+    print(f"  │ Bag-of-roots      │  {root['bag_precision']:6.2f}%  │  {root['bag_recall']:6.2f}% │  {root['bag_f1']:6.2f}% │")
+    print(f"  │ Aligned (LCS)     │  {root['align_precision']:6.2f}%  │  {root['align_recall']:6.2f}% │  {root['align_f1']:6.2f}% │")
+    print(f"  │ Windowed (±3) *   │  {root['window_precision']:6.2f}%  │  {root['window_recall']:6.2f}% │  {root['window_f1']:6.2f}% │")
+    print(f"  └───────────────────┴───────────┴──────────┴──────────┘")
+    print(f"  * Windowed: Tolerates ±3 position shift for line alignment errors")
     print(f"  Counts: {root['pred_count']} predicted, {root['gt_count']} GT")
 
     # Quality
@@ -641,3 +701,33 @@ F:maj7"""
     print("  - Position-based: Cascade failure after insertion")
     print("  - Bag-of-roots: All roots found (extra G counted)")
     print("  - Aligned (LCS): 4/4 GT roots matched in sequence")
+    print("  - Windowed (±3): Tolerates position shifts, finds matches nearby")
+
+    # Test 3: Line alignment shift (shows windowed matching advantage)
+    print("\n\nMetrics Test 3: LINE ALIGNMENT SHIFT (off by 2 positions)")
+    print("-" * 60)
+    print("GT:   C    G    Am   F    Dm   E7   (6 chords)")
+    print("Pred: X    X    C    G    Am   F    (shifted by 2, different first 2)")
+    print("")
+
+    gt_sample3 = """C:maj7
+G:7
+A:min7
+F:maj7
+D:min7
+E:7"""
+
+    pred_sample3 = """Bb:maj7
+Eb:7
+C:maj7
+G:7
+A:min7
+F:maj7"""
+
+    metrics3 = compute_all_chord_metrics(pred_sample3, gt_sample3)
+    print_chord_metrics(metrics3)
+
+    print("\nInterpretation:")
+    print("  - Position-based: Only matches at same position (likely low)")
+    print("  - Windowed (±3): Finds C, G, Am, F shifted by 2 positions")
+    print("  - This mimics real-world line alignment errors in OCR")
