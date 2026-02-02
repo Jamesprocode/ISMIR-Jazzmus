@@ -368,6 +368,53 @@ def run_system_level_evaluation(
 
                     print(f"  Saved: {base_filename} (.jpg, _pred.txt, _gt.txt)")
 
+        # Save best performing crops
+        if save_visualizations:
+            # Sort all systems by CER ascending (best first)
+            sorted_by_cer = sorted(all_system_metrics, key=lambda x: x['cer'])
+
+            # Best crops (lowest CER)
+            best_crops_dir = f"{viz_output_dir}/best_crops"
+            Path(best_crops_dir).mkdir(parents=True, exist_ok=True)
+            print(f"\nSaving top 10 best cropped systems to {best_crops_dir}/")
+            for i, m in enumerate(sorted_by_cer[:10]):
+                parent_result = next(r for r in valid_results if m in r['system_metrics'])
+                img_name = Path(parent_result['image']).stem
+                base_filename = f"{i+1:02d}_{img_name}_sys{m['system_idx']}_CER{m['cer']:.1f}"
+
+                # Save cropped image
+                crop_img = m['crop']
+                crop_img.save(f"{best_crops_dir}/{base_filename}.jpg")
+
+                # Save predicted and GT kern
+                with open(f"{best_crops_dir}/{base_filename}_pred.txt", 'w') as f:
+                    f.write(m['prediction'])
+                with open(f"{best_crops_dir}/{base_filename}_gt.txt", 'w') as f:
+                    f.write(m['ground_truth'])
+
+                print(f"  Saved: {base_filename} (CER={m['cer']:.1f}%)")
+
+            # Middle crops (median CER)
+            middle_crops_dir = f"{viz_output_dir}/middle_crops"
+            Path(middle_crops_dir).mkdir(parents=True, exist_ok=True)
+            mid_idx = len(sorted_by_cer) // 2
+            middle_samples = sorted_by_cer[mid_idx-5:mid_idx+5]  # 10 around median
+            print(f"\nSaving 10 middle-performing cropped systems to {middle_crops_dir}/")
+            for i, m in enumerate(middle_samples):
+                parent_result = next(r for r in valid_results if m in r['system_metrics'])
+                img_name = Path(parent_result['image']).stem
+                base_filename = f"{i+1:02d}_{img_name}_sys{m['system_idx']}_CER{m['cer']:.1f}"
+
+                crop_img = m['crop']
+                crop_img.save(f"{middle_crops_dir}/{base_filename}.jpg")
+
+                with open(f"{middle_crops_dir}/{base_filename}_pred.txt", 'w') as f:
+                    f.write(m['prediction'])
+                with open(f"{middle_crops_dir}/{base_filename}_gt.txt", 'w') as f:
+                    f.write(m['ground_truth'])
+
+                print(f"  Saved: {base_filename} (CER={m['cer']:.1f}%)")
+
     print(f"\nFailed samples: {len(failed_samples)}")
     print("="*60)
 

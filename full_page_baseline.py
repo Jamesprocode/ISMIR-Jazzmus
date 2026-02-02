@@ -33,6 +33,9 @@ def compute_dynamic_boundaries(
     Gap between systems is split: 70% to system below (for chords),
     30% to system above.
 
+    For first/last systems, use average gap padding instead of extending
+    all the way to image edges.
+
     Args:
         staff_boxes: List of (y_center, (x1, y1, x2, y2)) sorted top-to-bottom
         image_height: Total image height
@@ -43,15 +46,34 @@ def compute_dynamic_boundaries(
         List of (x1, crop_top, x2, crop_bottom) for each staff
     """
     n = len(staff_boxes)
+    if n == 0:
+        return []
+
     boundaries = []
+
+    # Compute average gap between systems for first/last padding
+    gaps = []
+    for i in range(1, n):
+        _, (_, y1, _, _) = staff_boxes[i]
+        _, (_, _, _, prev_y2) = staff_boxes[i - 1]
+        gaps.append(y1 - prev_y2)
+
+    # Average gap, or use staff height as fallback for single system
+    if gaps:
+        avg_gap = sum(gaps) / len(gaps)
+    else:
+        # Single system: use 20% of staff height as padding
+        _, (_, y1, _, y2) = staff_boxes[0]
+        avg_gap = (y2 - y1) * 0.4  # 20% top + 20% bottom equivalent
 
     for i in range(n):
         _, (x1, y1, x2, y2) = staff_boxes[i]
 
         # Compute top boundary
         if i == 0:
-            # First system: extend to image top
-            crop_top = 0
+            # First system: use avg_gap * top_ratio as padding (same as middle systems get)
+            top_padding = int(avg_gap * top_ratio)
+            crop_top = max(0, y1 - top_padding)
         else:
             # Gap between previous system's bottom and this system's top
             _, (_, _, _, prev_y2) = staff_boxes[i - 1]
@@ -61,8 +83,9 @@ def compute_dynamic_boundaries(
 
         # Compute bottom boundary
         if i == n - 1:
-            # Last system: extend to image bottom
-            crop_bottom = image_height
+            # Last system: use avg_gap * bottom_ratio as padding (same as middle systems get)
+            bottom_padding = int(avg_gap * bottom_ratio)
+            crop_bottom = min(image_height, y2 + bottom_padding)
         else:
             # Gap between this system's bottom and next system's top
             _, (_, next_y1, _, _) = staff_boxes[i + 1]
