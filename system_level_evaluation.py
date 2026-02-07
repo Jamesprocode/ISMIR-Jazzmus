@@ -119,11 +119,14 @@ def evaluate_systems(
     # Flag count mismatch but still evaluate what we can
     if n_crops != n_gt:
         if n_crops > n_gt:
-            result['warning'] = f"YOLO detected {n_crops} systems but GT has {n_gt} (ignoring {n_crops - n_gt} extra crops)"
+            result['warning'] = f"YOLO detected {n_crops} systems but GT has {n_gt} (evaluating {n_gt}, ignoring {n_crops - n_gt} extra crops)"
         else:
-            result['warning'] = f"YOLO detected {n_crops} systems but GT has {n_gt} (YOLO missed {n_gt - n_crops} systems)"
+            result['warning'] = f"YOLO detected {n_crops} systems but GT has {n_gt} (evaluating {n_crops}, YOLO missed {n_gt - n_crops} systems)"
+        print(f"  {result['warning']}")
 
-    # Evaluate min(n_crops, n_gt) systems
+    # Evaluate based on GT count (top-to-bottom matching)
+    # If YOLO has more: use first n_gt crops
+    # If YOLO has fewer: evaluate what YOLO detected
     n_eval = min(n_crops, n_gt)
     for i in range(n_eval):
         crop = yolo_crops[i]
@@ -170,7 +173,7 @@ def save_yolo_visualization(
     image_path: str,
     yolo_model_path: str,
     output_path: str,
-    confidence_threshold: float = 0.2
+    confidence_threshold: float = 0.6
 ):
     """
     Save visualization of YOLO bounding boxes on the original image.
@@ -235,11 +238,12 @@ def run_system_level_evaluation(
 
     for img_path, gt_path in tqdm(test_pairs, desc="Evaluating"):
         try:
-            # Step 1: Segment with YOLO
+            # Step 1: Segment with YOLO (with deskew for rotated images)
             yolo_crops = segment_staves(
                 image_path=img_path,
                 yolo_model_path=yolo_model_path,
-                confidence_threshold=0.2
+                confidence_threshold=0.6,
+                deskew=True
             )
 
             # Step 2: Extract GT systems (excluding Solo/Coda sections)
@@ -301,6 +305,25 @@ def run_system_level_evaluation(
         print(f"  CER: {np.mean(cers):.2f}% ± {np.std(cers):.2f}%")
         print(f"  SER: {np.mean(sers):.2f}% ± {np.std(sers):.2f}%")
         print(f"  LER: {np.mean(lers):.2f}% ± {np.std(lers):.2f}%")
+
+        # Per-page metrics (average across systems within each page)
+        page_cers = []
+        page_sers = []
+        page_lers = []
+        for result in valid_results:
+            if result['system_metrics']:
+                page_cer = np.mean([m['cer'] for m in result['system_metrics']])
+                page_ser = np.mean([m['ser'] for m in result['system_metrics']])
+                page_ler = np.mean([m['ler'] for m in result['system_metrics']])
+                page_cers.append(page_cer)
+                page_sers.append(page_ser)
+                page_lers.append(page_ler)
+
+        if page_cers:
+            print(f"\nPer-Page Metrics (mean ± std across {len(page_cers)} pages):")
+            print(f"  CER: {np.mean(page_cers):.2f}% ± {np.std(page_cers):.2f}%")
+            print(f"  SER: {np.mean(page_sers):.2f}% ± {np.std(page_sers):.2f}%")
+            print(f"  LER: {np.mean(page_lers):.2f}% ± {np.std(page_lers):.2f}%")
 
         # Aggregate chord-specific metrics
         chord_systems = [m for m in all_system_metrics if 'chord_metrics' in m]
@@ -521,7 +544,7 @@ def run_system_level_evaluation(
 
 if __name__ == "__main__":
     # Configuration (adjust paths as needed)
-    checkpoint_path = "/home/hice1/jwang3180/jazzmus/ISMIR-Jazzmus/weights/smt_sys_best/smt_pre_syn_medium.ckpt"
+    checkpoint_path = "/home/hice1/jwang3180/jazzmus/ISMIR-Jazzmus/weights/smt/smt_0.ckpt"
     yolo_model_path = "/home/hice1/jwang3180/jazzmus/ISMIR-Jazzmus/yolo_weigths/yolov11s_20241108.pt"
     test_split_file = "/home/hice1/jwang3180/jazzmus/ISMIR-Jazzmus/data/jazzmus_fullpage/splits/test_0.txt"
 
@@ -536,3 +559,4 @@ if __name__ == "__main__":
         save_visualizations=True,  # Save YOLO visualizations for mismatched samples
         viz_output_dir="./yolo_detection_viz"
     )
+i

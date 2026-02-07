@@ -28,7 +28,7 @@ print("Contains \\n?", '\n' in sample['transcription'])
 # ssh -i ~/.ssh/lambda-key.pem ubuntu@192.222.58.215
 # go back to batch if the data the model blew up
 
-srun -p ice-gpu --gres=gpu:a100:1 --mem=64G --cpus-per-task=20 --time=1:00:00 --mail-type=BEGIN --mail-user=jwang3180@gatech.edu --pty bash
+srun -p ice-gpu --gres=gpu:a100:1 --mem=64G --cpus-per-task=20 --time=3:00:00 --pty bash
 srun -p ice-gpu --gres=gpu:1 \
   --cpus-per-task=32 --mem=64G \
   --time=08:00:00 --pty bash

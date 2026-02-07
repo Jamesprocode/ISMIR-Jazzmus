@@ -228,20 +228,22 @@ def segment_staves(
     results = model(image, conf=confidence_threshold, verbose=False)
     result = results[0]
 
-    # Extract staff bounding boxes (exclude empty_staff)
+    # Extract staff bounding boxes (only "staff" class, exclude others)
     staff_boxes = []
-    n_empty = 0
+    filtered_counts = {}  # Track filtered classes
     for box, cls in zip(result.boxes.xyxy, result.boxes.cls):
-        class_name = result.names[int(cls)]
-        if class_name.lower() == "staff":
+        class_name = result.names[int(cls)].lower()
+        if class_name == "staff":
             x1, y1, x2, y2 = map(int, box.cpu().numpy())
             y_center = (y1 + y2) / 2
             staff_boxes.append((y_center, (x1, y1, x2, y2)))
-        elif class_name.lower() == "empty_staff":
-            n_empty += 1
+        else:
+            # Track all filtered classes (empty_staff, title, lyrics, etc.)
+            filtered_counts[class_name] = filtered_counts.get(class_name, 0) + 1
 
-    if n_empty > 0:
-        print(f"  Filtered out {n_empty} empty_staff system(s)")
+    if filtered_counts:
+        filtered_str = ", ".join(f"{k}={v}" for k, v in filtered_counts.items())
+        print(f"  Filtered out: {filtered_str}")
 
     # Sort by vertical position (top to bottom)
     staff_boxes.sort(key=lambda x: x[0])
