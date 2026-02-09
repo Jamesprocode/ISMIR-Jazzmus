@@ -1,0 +1,20 @@
+**kern	**mxhm
+*I"Electric Piano	*
+*clefG2	*
+*k[b-e-a-]	*
+*E-:	*
+*M4/4	*
+=	=
+2ee-]	.
+2cc	.
+=	=
+1ee-	Bb:maj
+=	=
+1ee-	.
+=	=
+[1ee-	Eb:maj
+=	=
+2.ee-]	.
+4r	.
+==	==
+*-	*-

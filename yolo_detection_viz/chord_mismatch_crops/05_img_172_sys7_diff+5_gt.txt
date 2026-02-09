@@ -1,0 +1,16 @@
+**kern	**mxhm
+*clefG2	*
+*k[b-e-a-d-g-]	*
+*D-:	*
+*M4/4	*
+*met(c)	*
+=	=
+4g-	Cb:maj7
+8d-L	.
+8dnJ	.
+8dd-L	Bb:7(#9)
+16bnL	.
+16dd-JJ	.
+8b-XL	.
+8a-J	.
+*-	*-
