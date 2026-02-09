@@ -268,4 +268,4 @@ pyrightconfig.json
 # Ignore all local history of files
 .history
 .ionide
-.yolo_detection_viz/yolo_detection_viz/
+.yolo_detection_viz/*
