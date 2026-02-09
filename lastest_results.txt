@@ -1,0 +1,118 @@
+============================================================
+RESULTS SUMMARY
+============================================================
+
+YOLO Detection Issues: 1/32 samples
+
+Samples with count mismatch:
+  data/jazzmus_fullpage/jpg/img_172.jpg: YOLO=12, GT=10
+
+218 total systems evaluated
+
+Per-System Metrics (mean ± std):
+  CER: 18.58% ± 8.76%
+  SER: 15.65% ± 8.27%
+  LER: 36.92% ± 15.34%
+
+--- CHORD-SPECIFIC METRICS (218 systems) ---
+
+Root Detection (aggregate):
+  ┌───────────────────┬───────────┬──────────┬──────────┐
+  │ Strategy          │ Precision │  Recall  │    F1    │
+  ├───────────────────┼───────────┼──────────┼──────────┤
+  │ Position-based    │   68.53%  │   67.81% │   68.17% │
+  │ Aligned (LCS)     │   77.07%  │   76.25% │   76.66% │
+  │ Windowed (±3)     │   78.31%  │   77.48% │   77.90% │
+  └───────────────────┴───────────┴──────────┴──────────┘
+  Counts: 1125 predicted, 1137 GT chords
+
+  Interpretation:
+    - If LCS >> Position: insertion/deletion errors dominate
+    - If Windowed >> Position: line alignment shift errors dominate
+    - If all similar: true root detection errors
+
+Quality Accuracy (where roots match):
+  Accuracy: 84.05% (648/771)
+
+Extension Accuracy (where roots match):
+  Accuracy: 87.16% (672/771)
+
+Full Chord Match (root + quality + extension):
+  Accuracy: 56.06% (615/1097)
+
+Chord count mismatches: 53/218 systems
+
+Top 10 worst chord count mismatches:
+  1. img_233 - System 4: pred=5, gt=16 (-11 deletions)
+  2. img_233 - System 8: pred=6, gt=16 (-10 deletions)
+  3. img_236 - System 0: pred=1, gt=7 (-6 deletions)
+  4. img_266 - System 7: pred=0, gt=5 (-5 deletions)
+  5. img_233 - System 2: pred=11, gt=7 (+4 insertions)
+  6. img_88 - System 6: pred=7, gt=4 (+3 insertions)
+  7. img_88 - System 2: pred=8, gt=6 (+2 insertions)
+  8. img_126 - System 0: pred=6, gt=8 (-2 deletions)
+  9. img_126 - System 5: pred=6, gt=8 (-2 deletions)
+  10. img_233 - System 0: pred=10, gt=8 (+2 insertions)
+
+Saving top 10 chord mismatch systems to ./yolo_detection_viz/chord_mismatch_crops/
+  Saved: 01_img_233_sys4_diff-11 (.jpg, _pred.txt, _gt.txt)
+  Saved: 02_img_233_sys8_diff-10 (.jpg, _pred.txt, _gt.txt)
+  Saved: 03_img_236_sys0_diff-6 (.jpg, _pred.txt, _gt.txt)
+  Saved: 04_img_266_sys7_diff-5 (.jpg, _pred.txt, _gt.txt)
+  Saved: 05_img_233_sys2_diff+4 (.jpg, _pred.txt, _gt.txt)
+  Saved: 06_img_88_sys6_diff+3 (.jpg, _pred.txt, _gt.txt)
+  Saved: 07_img_88_sys2_diff+2 (.jpg, _pred.txt, _gt.txt)
+  Saved: 08_img_126_sys0_diff-2 (.jpg, _pred.txt, _gt.txt)
+  Saved: 09_img_126_sys5_diff-2 (.jpg, _pred.txt, _gt.txt)
+  Saved: 10_img_233_sys0_diff+2 (.jpg, _pred.txt, _gt.txt)
+
+--- OUTLIER ANALYSIS ---
+Outliers (CER > 36.10%): 10 systems
+
+Top 10 worst systems:
+  1. img_51 - System 4: CER=53.16%, SER=56.41%
+  2. img_88 - System 8: CER=43.83%, SER=47.50%
+  3. img_233 - System 2: CER=41.88%, SER=34.81%
+  4. img_56 - System 4: CER=41.38%, SER=28.57%
+  5. img_233 - System 8: CER=40.49%, SER=43.20%
+  6. img_10 - System 3: CER=40.40%, SER=41.86%
+  7. img_266 - System 1: CER=39.71%, SER=47.76%
+  8. img_88 - System 6: CER=37.93%, SER=22.79%
+  9. img_266 - System 0: CER=37.14%, SER=36.59%
+  10. img_233 - System 4: CER=37.12%, SER=38.18%
+
+Saving top 10 worst cropped systems to ./yolo_detection_viz/worst_crops/
+  Saved: 01_img_51_sys4_CER53.2 (.jpg, _pred.txt, _gt.txt)
+  Saved: 02_img_88_sys8_CER43.8 (.jpg, _pred.txt, _gt.txt)
+  Saved: 03_img_233_sys2_CER41.9 (.jpg, _pred.txt, _gt.txt)
+  Saved: 04_img_56_sys4_CER41.4 (.jpg, _pred.txt, _gt.txt)
+  Saved: 05_img_233_sys8_CER40.5 (.jpg, _pred.txt, _gt.txt)
+  Saved: 06_img_10_sys3_CER40.4 (.jpg, _pred.txt, _gt.txt)
+  Saved: 07_img_266_sys1_CER39.7 (.jpg, _pred.txt, _gt.txt)
+  Saved: 08_img_88_sys6_CER37.9 (.jpg, _pred.txt, _gt.txt)
+  Saved: 09_img_266_sys0_CER37.1 (.jpg, _pred.txt, _gt.txt)
+  Saved: 10_img_233_sys4_CER37.1 (.jpg, _pred.txt, _gt.txt)
+
+Saving top 10 best cropped systems to ./yolo_detection_viz/best_crops/
+  Saved: 01_img_131_sys8_CER4.3 (CER=4.3%)
+  Saved: 02_img_30_sys7_CER4.4 (CER=4.4%)
+  Saved: 03_img_30_sys3_CER4.6 (CER=4.6%)
+  Saved: 04_img_180_sys0_CER4.6 (CER=4.6%)
+  Saved: 05_img_30_sys1_CER5.4 (CER=5.4%)
+  Saved: 06_img_87_sys2_CER5.4 (CER=5.4%)
+  Saved: 07_img_131_sys6_CER6.1 (CER=6.1%)
+  Saved: 08_img_30_sys6_CER6.1 (CER=6.1%)
+  Saved: 09_img_266_sys5_CER6.4 (CER=6.4%)
+  Saved: 10_img_180_sys5_CER6.5 (CER=6.5%)
+
+Saving 10 middle-performing cropped systems to ./yolo_detection_viz/middle_crops/
+  Saved: 01_img_51_sys0_CER16.6 (CER=16.6%)
+  Saved: 02_img_88_sys5_CER16.6 (CER=16.6%)
+  Saved: 03_img_166_sys3_CER16.8 (CER=16.8%)
+  Saved: 04_img_286_sys2_CER16.8 (CER=16.8%)
+  Saved: 05_img_126_sys7_CER16.9 (CER=16.9%)
+  Saved: 06_img_19_sys4_CER17.2 (CER=17.2%)
+  Saved: 07_img_239_sys0_CER17.3 (CER=17.3%)
+  Saved: 08_img_231_sys7_CER17.3 (CER=17.3%)
+  Saved: 09_img_272_sys5_CER17.4 (CER=17.4%)
+  Saved: 10_img_231_sys3_CER17.6 (CER=17.6%)
