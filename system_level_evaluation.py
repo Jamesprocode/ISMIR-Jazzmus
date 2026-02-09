@@ -59,12 +59,11 @@ def extract_gt_systems(full_page_gt: str) -> Tuple[List[str], List[int]]:
         # Check for linebreak marker
         if line.strip() == '!!linebreak:original':
             if current_system_lines:
-                # Exclude systems containing any !LO line (Solo, Coda, etc.)
-                has_lo_marker = any(l.startswith('!LO') for l in current_system_lines)
-
-                if not has_lo_marker:
-                    # Build complete system with headers
-                    system = '\n'.join(header_lines + current_system_lines + ['*-\t*-'])
+                # Strip !LO layout directives (tempo, text, coda markers, etc.)
+                # from system content — they are not musical content
+                cleaned = [l for l in current_system_lines if not l.startswith('!')]
+                if cleaned:
+                    system = '\n'.join(header_lines + cleaned + ['*-\t*-'])
                     systems.append(system)
                     system_indices.append(current_system_idx)
 
@@ -76,10 +75,9 @@ def extract_gt_systems(full_page_gt: str) -> Tuple[List[str], List[int]]:
 
     # Add final system if any content remains
     if current_system_lines:
-        has_lo_marker = any(l.startswith('!LO') for l in current_system_lines)
-
-        if not has_lo_marker:
-            system = '\n'.join(header_lines + current_system_lines + ['*-\t*-'])
+        cleaned = [l for l in current_system_lines if not l.startswith('!')]
+        if cleaned:
+            system = '\n'.join(header_lines + cleaned + ['*-\t*-'])
             systems.append(system)
             system_indices.append(current_system_idx)
 
@@ -559,4 +557,3 @@ if __name__ == "__main__":
         save_visualizations=True,  # Save YOLO visualizations for mismatched samples
         viz_output_dir="./yolo_detection_viz"
     )
-i

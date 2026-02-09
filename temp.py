@@ -64,7 +64,7 @@ source /usr/local/pace-apps/manual/packages/anaconda3/2023.03/etc/profile.d/cond
 conda activate jazzmus
 
 # Standard H200 GPU session (interactive shell)
-srun -p ice-gpu --gres=gpu:h100:1 --mem=64G --cpus-per-task=20 \
+srun -p ice-gpu --gres=gpu:h200:1 --mem=64G --cpus-per-task=20 \
   --time=4:00:00 --mail-type=BEGIN --mail-user=jwang3180@gatech.edu --pty bash
   
 srun -p ice-gpu --gres=gpu:a40:1 --mem=64G --cpus-per-task=20 \
