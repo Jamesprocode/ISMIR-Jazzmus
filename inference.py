@@ -321,7 +321,7 @@ class FullPageInference:
         image_tensor = self.preprocess_image(image_path)
 
         # Generate predictions
-        print("Generating predictions...")
+        # print("Generating predictions...")
         with torch.no_grad():
             predicted_tokens, logits = self.model.model.predict(input=image_tensor[0])
 
