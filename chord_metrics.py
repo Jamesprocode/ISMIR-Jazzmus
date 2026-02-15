@@ -1350,6 +1350,7 @@ def aggregate_page_chord_metrics(page_metrics_list: List[Dict]) -> Dict:
 
     return {
         'n_units': len(page_metrics_list),
+        '_raw_metrics': page_metrics_list,  # keep raw per-unit data for printing
         'total_matches': total_matches,
         'total_substitutions': total_subs,
         'total_insertions': total_ins,
@@ -1388,15 +1389,27 @@ def print_page_chord_metrics(agg: Dict, unit_label: str = "page"):
     print(f"CHORD METRICS - edit distance ({n} {unit_label}s)")
     print(f"{'='*60}")
 
+    # Collect per-unit counts for mean ± std
+    per_match = [m['matches'] for m in agg.get('_raw_metrics', [])] if '_raw_metrics' in agg else None
+    per_sub = [m['substitutions'] for m in agg.get('_raw_metrics', [])] if '_raw_metrics' in agg else None
+    per_ins = [m['insertions'] for m in agg.get('_raw_metrics', [])] if '_raw_metrics' in agg else None
+    per_del = [m['deletions'] for m in agg.get('_raw_metrics', [])] if '_raw_metrics' in agg else None
+
     print(f"\nRoot Alignment (edit distance on roots):")
-    print(f"  ┌─────────────────┬────────┬────────────────────────────┐")
-    print(f"  │ Operation       │ Count  │ Description                │")
-    print(f"  ├─────────────────┼────────┼────────────────────────────┤")
-    print(f"  │ Matches         │ {agg['total_matches']:6d} │ Correct root, aligned      │")
-    print(f"  │ Substitutions   │ {agg['total_substitutions']:6d} │ Wrong root predicted       │")
-    print(f"  │ Insertions      │ {agg['total_insertions']:6d} │ Extra predicted chords     │")
-    print(f"  │ Deletions       │ {agg['total_deletions']:6d} │ Missed GT chords           │")
-    print(f"  └─────────────────┴────────┴────────────────────────────┘")
+    print(f"  ┌─────────────────┬────────┬─────────────────────┬────────────────────────────┐")
+    print(f"  │ Operation       │ Total  │ Per {unit_label:<7s}         │ Description                │")
+    print(f"  ├─────────────────┼────────┼─────────────────────┼────────────────────────────┤")
+    if per_match:
+        print(f"  │ Matches         │ {agg['total_matches']:6d} │ {np.mean(per_match):6.2f} ± {np.std(per_match):5.2f}   │ Correct root, aligned      │")
+        print(f"  │ Substitutions   │ {agg['total_substitutions']:6d} │ {np.mean(per_sub):6.2f} ± {np.std(per_sub):5.2f}   │ Wrong root predicted       │")
+        print(f"  │ Insertions      │ {agg['total_insertions']:6d} │ {np.mean(per_ins):6.2f} ± {np.std(per_ins):5.2f}   │ Extra predicted chords     │")
+        print(f"  │ Deletions       │ {agg['total_deletions']:6d} │ {np.mean(per_del):6.2f} ± {np.std(per_del):5.2f}   │ Missed GT chords           │")
+    else:
+        print(f"  │ Matches         │ {agg['total_matches']:6d} │        —            │ Correct root, aligned      │")
+        print(f"  │ Substitutions   │ {agg['total_substitutions']:6d} │        —            │ Wrong root predicted       │")
+        print(f"  │ Insertions      │ {agg['total_insertions']:6d} │        —            │ Extra predicted chords     │")
+        print(f"  │ Deletions       │ {agg['total_deletions']:6d} │        —            │ Missed GT chords           │")
+    print(f"  └─────────────────┴────────┴─────────────────────┴────────────────────────────┘")
 
     scores = agg['per_unit_alignment_scores']
     print(f"  Alignment Score (aggregate): {agg['aggregate_alignment_score']:.2f}%")
