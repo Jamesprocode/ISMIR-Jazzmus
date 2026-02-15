@@ -20,6 +20,9 @@ from chord_metrics import (
     compute_all_chord_metrics,
     print_chord_metrics,
     extract_chords_from_mxhm,
+    compute_page_chord_metrics,
+    aggregate_page_chord_metrics,
+    print_page_chord_metrics,
 )
 
 
@@ -159,10 +162,31 @@ def evaluate_systems(
                     gt_spines['**mxhm']
                 )
                 system_result['chord_metrics'] = chord_metrics
+                # Edit distance metrics for this system
+                pred_chords = extract_chords_from_mxhm(pred_spines['**mxhm'])
+                gt_chords = extract_chords_from_mxhm(gt_spines['**mxhm'])
+                if pred_chords and gt_chords:
+                    system_result['ed_chord_metrics'] = compute_page_chord_metrics(pred_chords, gt_chords)
         except Exception as e:
             system_result['chord_metrics_error'] = str(e)
 
         result['system_metrics'].append(system_result)
+
+    # Page-level chord metrics: concatenate chords across all systems
+    page_pred_chords = []
+    page_gt_chords = []
+    for sm in result['system_metrics']:
+        try:
+            pred_spines = extract_spines(sm['prediction'])
+            gt_spines = extract_spines(sm['ground_truth'])
+            if '**mxhm' in pred_spines and '**mxhm' in gt_spines:
+                page_pred_chords.extend(extract_chords_from_mxhm(pred_spines['**mxhm']))
+                page_gt_chords.extend(extract_chords_from_mxhm(gt_spines['**mxhm']))
+        except Exception:
+            pass
+
+    if page_pred_chords and page_gt_chords:
+        result['page_chord_metrics'] = compute_page_chord_metrics(page_pred_chords, page_gt_chords)
 
     return result
 
@@ -446,6 +470,21 @@ def run_system_level_evaluation(
                             f.write(m['ground_truth'])
 
                         print(f"  Saved: {base_filename} (.jpg, _pred.txt, _gt.txt)")
+
+        # System-level edit distance chord metrics
+        system_ed_metrics = [m['ed_chord_metrics'] for m in all_system_metrics if 'ed_chord_metrics' in m]
+        if system_ed_metrics:
+            agg_system_ed = aggregate_page_chord_metrics(system_ed_metrics)
+            agg_system_ed['n_pages'] = len(system_ed_metrics)  # relabel as systems
+            print(f"\n--- SYSTEM-LEVEL edit distance metrics ---")
+            print_page_chord_metrics(agg_system_ed)
+
+        # Page-level edit distance chord metrics
+        page_chord_results = [r['page_chord_metrics'] for r in valid_results if 'page_chord_metrics' in r]
+        if page_chord_results:
+            agg_page = aggregate_page_chord_metrics(page_chord_results)
+            print(f"\n--- PAGE-LEVEL edit distance metrics ---")
+            print_page_chord_metrics(agg_page)
 
         # Find outliers (systems with high error rates)
         cer_threshold = np.mean(cers) + 2 * np.std(cers)
