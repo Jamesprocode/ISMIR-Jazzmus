@@ -629,6 +629,13 @@ def concatenate_systems(system_kerns: List[str]) -> str:
 if __name__ == "__main__":
     from tqdm import tqdm
     from jazzmus.dataset.eval_functions import compute_poliphony_metrics
+    from inference import extract_spines
+    from chord_metrics import (
+        extract_chords_from_mxhm,
+        compute_page_chord_metrics,
+        aggregate_page_chord_metrics,
+        print_page_chord_metrics,
+    )
 
     checkpint_path = "/home/hice1/jwang3180/jazzmus/ISMIR-Jazzmus/weights/smt_sys_best/smt_pre_syn_medium.ckpt"
     device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -689,6 +696,19 @@ if __name__ == "__main__":
                 'image': img_path
             })
 
+            # Compute page-level edit distance chord metrics
+            try:
+                pred_spines = extract_spines(full_page_kern)
+                gt_spines = extract_spines(ground_truth)
+                if '**mxhm' in pred_spines and '**mxhm' in gt_spines:
+                    pred_chords = extract_chords_from_mxhm(pred_spines['**mxhm'])
+                    gt_chords = extract_chords_from_mxhm(gt_spines['**mxhm'])
+                    if pred_chords and gt_chords:
+                        page_chord = compute_page_chord_metrics(pred_chords, gt_chords)
+                        per_sample_metrics[-1]['page_chord_metrics'] = page_chord
+            except Exception:
+                pass
+
         except Exception as e:
             print(f"\n✗ Failed on {img_path}: {e}")
             continue
@@ -724,5 +744,9 @@ if __name__ == "__main__":
     print(f"LER: {ler_mean:.2f}% (±{ler_std:.2f}%)")
     print(f"{'='*60}\n")
 
-
+    # Page-level edit distance chord metrics
+    page_chord_results = [m['page_chord_metrics'] for m in per_sample_metrics if 'page_chord_metrics' in m]
+    if page_chord_results:
+        agg_page = aggregate_page_chord_metrics(page_chord_results)
+        print_page_chord_metrics(agg_page)
 

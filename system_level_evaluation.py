@@ -22,7 +22,7 @@ from chord_metrics import (
     extract_chords_from_mxhm,
     compute_page_chord_metrics,
     aggregate_page_chord_metrics,
-    print_page_chord_metrics,
+    print_page_chord_metrics,  # used for system-level ED aggregation
 )
 
 
@@ -171,22 +171,6 @@ def evaluate_systems(
             system_result['chord_metrics_error'] = str(e)
 
         result['system_metrics'].append(system_result)
-
-    # Page-level chord metrics: concatenate chords across all systems
-    page_pred_chords = []
-    page_gt_chords = []
-    for sm in result['system_metrics']:
-        try:
-            pred_spines = extract_spines(sm['prediction'])
-            gt_spines = extract_spines(sm['ground_truth'])
-            if '**mxhm' in pred_spines and '**mxhm' in gt_spines:
-                page_pred_chords.extend(extract_chords_from_mxhm(pred_spines['**mxhm']))
-                page_gt_chords.extend(extract_chords_from_mxhm(gt_spines['**mxhm']))
-        except Exception:
-            pass
-
-    if page_pred_chords and page_gt_chords:
-        result['page_chord_metrics'] = compute_page_chord_metrics(page_pred_chords, page_gt_chords)
 
     return result
 
@@ -479,13 +463,6 @@ def run_system_level_evaluation(
             print(f"\n--- SYSTEM-LEVEL edit distance metrics ---")
             print_page_chord_metrics(agg_system_ed)
 
-        # Page-level edit distance chord metrics
-        page_chord_results = [r['page_chord_metrics'] for r in valid_results if 'page_chord_metrics' in r]
-        if page_chord_results:
-            agg_page = aggregate_page_chord_metrics(page_chord_results)
-            print(f"\n--- PAGE-LEVEL edit distance metrics ---")
-            print_page_chord_metrics(agg_page)
-
         # Find outliers (systems with high error rates)
         cer_threshold = np.mean(cers) + 2 * np.std(cers)
         outliers = [m for m in all_system_metrics if m['cer'] > cer_threshold]
@@ -593,6 +570,6 @@ if __name__ == "__main__":
         yolo_model_path=yolo_model_path,
         checkpoint_path=checkpoint_path,
         device=device,
-        save_visualizations=True,  # Save YOLO visualizations for mismatched samples
+        save_visualizations=False,  # Save YOLO visualizations for mismatched samples
         viz_output_dir="./yolo_detection_viz"
     )
