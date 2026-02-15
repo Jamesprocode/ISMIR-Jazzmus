@@ -263,24 +263,22 @@ class FullPageInference:
 
     def preprocess_image(self, image_path, fixed_img_height=128, max_fix_img_width=1000):
         """
-        Preprocess image for inference using training's batch_preparation_img2seq logic.
+        Preprocess image for inference.
 
-        This matches the dataset preprocessing:
+        Matches the dataset preprocessing:
         - Fixed height: 128 (preserve aspect ratio)
         - Variable width: calculated to preserve aspect, capped at 1000
-        - Padding: to minimum of 32 height and 1000 width (matching batch_preparation_img2seq)
 
         Args:
-            image_path: Path to input image
+            image_path: Path to input image or numpy array
             fixed_img_height: Fixed height for resizing (default 128, matching config)
             max_fix_img_width: Maximum width after resizing (default 1000, matching config)
 
         Returns:
-            torch.Tensor: Preprocessed image with shape (1, 1, pad_height, pad_width)
+            torch.Tensor: Preprocessed image with shape (1, 1, H, W)
         """
         # Load image
         if isinstance(image_path, str):
-            print("image loaded")
             img = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)
         else:
             img = np.array(image_path)
@@ -292,7 +290,6 @@ class FullPageInference:
         original_height, original_width = img.shape
 
         # Resize with aspect ratio preservation (matching training logic in smt_dataset.py:72-77)
-        # Height is fixed, width is calculated to preserve aspect ratio
         new_height = fixed_img_height
         new_width = int(np.ceil(original_width * fixed_img_height / original_height))
 
@@ -304,21 +301,10 @@ class FullPageInference:
         img = cv2.resize(img, (new_width, new_height))
 
         # Convert to tensor using the same pipeline as training
-        # This applies: ToPILImage → Grayscale → ToTensor
         img_tensor = convert_img_to_tensor(img)  # Returns (C, H, W) = (1, H, W)
-        img_tensor = img_tensor.unsqueeze(0)    # Add batch dimension: (1, 1, H, W)
+        img_tensor = img_tensor.unsqueeze(0)      # Add batch dimension: (1, 1, H, W)
 
-        # Pad to minimum dimensions using batch_preparation_img2seq logic (lines 105-106)
-        # This matches what happens during training when batch_size=1
-        pad_height = max(32, new_height)      # At least 32 (from batch_preparation_img2seq)
-        pad_width = max(1000, new_width)      # At least 1000 (from batch_preparation_img2seq)
-
-        padded = torch.ones(1, 1, pad_height, pad_width)
-        padded[:, :, :new_height, :new_width] = img_tensor
-
-        print(f"✓ Image preprocessed: {(original_height, original_width)}->{(new_height, new_width)} -> padded to {(pad_height, pad_width)}")
-
-        return padded.to(self.device)
+        return img_tensor.to(self.device)
     
     def predict(self, image_path, return_probs=False):
         """
