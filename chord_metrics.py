@@ -1343,8 +1343,13 @@ def aggregate_page_chord_metrics(page_metrics_list: List[Dict]) -> Dict:
     total_full_correct = sum(m['full_correct'] for m in page_metrics_list)
     full_acc = total_full_correct / total_matches * 100 if total_matches > 0 else 0
 
+    # Per-unit scores (for mean ± std per page or per system)
+    per_unit_quality = [m['quality_accuracy'] for m in page_metrics_list if m['matches'] > 0]
+    per_unit_extension = [m['extension_accuracy'] for m in page_metrics_list if m['matches'] > 0]
+    per_unit_full = [m['full_accuracy'] for m in page_metrics_list if m['matches'] > 0]
+
     return {
-        'n_pages': len(page_metrics_list),
+        'n_units': len(page_metrics_list),
         'total_matches': total_matches,
         'total_substitutions': total_subs,
         'total_insertions': total_ins,
@@ -1352,25 +1357,35 @@ def aggregate_page_chord_metrics(page_metrics_list: List[Dict]) -> Dict:
         'total_pred': total_pred,
         'total_gt': total_gt,
         'aggregate_alignment_score': agg_alignment,
-        'per_page_alignment_scores': per_page_alignment,
+        'per_unit_alignment_scores': per_page_alignment,
         'quality_correct': total_qual_correct,
         'quality_accuracy': qual_acc,
+        'per_unit_quality_scores': per_unit_quality,
         'extension_correct': total_ext_correct,
         'extension_accuracy': ext_acc,
+        'per_unit_extension_scores': per_unit_extension,
         'full_correct': total_full_correct,
         'full_accuracy': full_acc,
+        'per_unit_full_scores': per_unit_full,
     }
 
 
-def print_page_chord_metrics(agg: Dict):
-    """Pretty print aggregated page-level edit distance chord metrics."""
+def print_page_chord_metrics(agg: Dict, unit_label: str = "page"):
+    """
+    Pretty print aggregated edit distance chord metrics.
+
+    Args:
+        agg: Aggregated metrics dict from aggregate_page_chord_metrics()
+        unit_label: "page" or "system" — controls wording in output
+    """
     if not agg:
         return
 
     import numpy as np
 
+    n = agg['n_units']
     print(f"\n{'='*60}")
-    print(f"PAGE-LEVEL CHORD METRICS (edit distance, {agg['n_pages']} pages)")
+    print(f"CHORD METRICS - edit distance ({n} {unit_label}s)")
     print(f"{'='*60}")
 
     print(f"\nRoot Alignment (edit distance on roots):")
@@ -1383,20 +1398,30 @@ def print_page_chord_metrics(agg: Dict):
     print(f"  │ Deletions       │ {agg['total_deletions']:6d} │ Missed GT chords           │")
     print(f"  └─────────────────┴────────┴────────────────────────────┘")
 
-    scores = agg['per_page_alignment_scores']
+    scores = agg['per_unit_alignment_scores']
     print(f"  Alignment Score (aggregate): {agg['aggregate_alignment_score']:.2f}%")
-    print(f"  Alignment Score (mean ± std per page): {np.mean(scores):.2f}% ± {np.std(scores):.2f}%")
+    print(f"  Alignment Score (per {unit_label}): {np.mean(scores):.2f}% ± {np.std(scores):.2f}%")
     print(f"  Counts: {agg['total_pred']} predicted, {agg['total_gt']} GT chords")
 
     tm = agg['total_matches']
+    qual_scores = agg['per_unit_quality_scores']
+    ext_scores = agg['per_unit_extension_scores']
+    full_scores = agg['per_unit_full_scores']
+
     print(f"\nQuality Accuracy (on {tm} matched roots):")
-    print(f"  Accuracy: {agg['quality_accuracy']:.2f}% ({agg['quality_correct']}/{tm})")
+    print(f"  Aggregate: {agg['quality_accuracy']:.2f}% ({agg['quality_correct']}/{tm})")
+    if qual_scores:
+        print(f"  Per {unit_label}: {np.mean(qual_scores):.2f}% ± {np.std(qual_scores):.2f}%")
 
     print(f"\nExtension Accuracy (on {tm} matched roots):")
-    print(f"  Accuracy: {agg['extension_accuracy']:.2f}% ({agg['extension_correct']}/{tm})")
+    print(f"  Aggregate: {agg['extension_accuracy']:.2f}% ({agg['extension_correct']}/{tm})")
+    if ext_scores:
+        print(f"  Per {unit_label}: {np.mean(ext_scores):.2f}% ± {np.std(ext_scores):.2f}%")
 
     print(f"\nFull Chord Accuracy (root + quality + extension, on {tm} matched roots):")
-    print(f"  Accuracy: {agg['full_accuracy']:.2f}% ({agg['full_correct']}/{tm})")
+    print(f"  Aggregate: {agg['full_accuracy']:.2f}% ({agg['full_correct']}/{tm})")
+    if full_scores:
+        print(f"  Per {unit_label}: {np.mean(full_scores):.2f}% ± {np.std(full_scores):.2f}%")
 
     print(f"{'='*60}")
 

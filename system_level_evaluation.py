@@ -459,9 +459,7 @@ def run_system_level_evaluation(
         system_ed_metrics = [m['ed_chord_metrics'] for m in all_system_metrics if 'ed_chord_metrics' in m]
         if system_ed_metrics:
             agg_system_ed = aggregate_page_chord_metrics(system_ed_metrics)
-            agg_system_ed['n_pages'] = len(system_ed_metrics)  # relabel as systems
-            print(f"\n--- SYSTEM-LEVEL edit distance metrics ---")
-            print_page_chord_metrics(agg_system_ed)
+            print_page_chord_metrics(agg_system_ed, unit_label="system")
 
         # Find outliers (systems with high error rates)
         cer_threshold = np.mean(cers) + 2 * np.std(cers)
