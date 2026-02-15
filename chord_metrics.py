@@ -1,14 +1,17 @@
 """
 Chord-Specific Evaluation Metrics for Jazz Lead Sheet Recognition
 
-Addresses the problem that CER/SER treat all errors equally:
-- C7 → Cmaj7 (wrong extension) penalized same as C7 → F#7 (wrong root)
-- But musically these are very different errors!
+Two families of metrics:
 
-New Metrics:
-1. Root Detection F1 - treats root detection as precision/recall problem
-2. Quality Accuracy - major, minor, diminished, augmented (once roots aligned)
-3. Extension Accuracy - 7, maj7, min7, 9, 13, etc. (once roots aligned)
+A) MIREX-style (duration-weighted, adapted from audio chord estimation):
+   - Chord Symbol Recall (CSR): What fraction of duration is correctly labeled?
+   - Vocabulary mappings: root-only, maj/min, 7th chords, full chord
+   - Segmentation quality: Directional Hamming distance (over/under-segmentation)
+
+B) Token-level (position-based, from original implementation):
+   - Root Detection F1
+   - Quality / Extension accuracy
+   - Full chord match F1
 """
 
 import re
@@ -210,6 +213,476 @@ def extract_chords_from_mxhm(mxhm_content: str) -> List[str]:
             continue
         chords.append(line)
     return chords
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  MIREX-STYLE DURATION-WEIGHTED METRICS  (adapted from audio chord eval)
+# ═══════════════════════════════════════════════════════════════════════════
+
+def kern_duration_to_beats(token: str) -> float:
+    """
+    Convert a **kern duration token to beats (quarter-note = 1.0).
+
+    Handles:
+      4c  -> 1.0   (quarter)
+      8d  -> 0.5   (eighth)
+      2e  -> 2.0   (half)
+      1f  -> 4.0   (whole)
+      16g -> 0.25  (sixteenth)
+      4.a -> 1.5   (dotted quarter)
+      [4b -> 1.0   (tie start, still has duration)
+      4b] -> 1.0   (tie end)
+      12c -> 0.333 (triplet eighth)
+      6d  -> 0.667 (triplet quarter)
+
+    Returns 0.0 for barlines, rests with no number, or unparseable tokens.
+    """
+    t = token.strip()
+    # Strip tie brackets, beam markers
+    t = t.replace('[', '').replace(']', '')
+    # Remove beaming chars L J k K
+    t = re.sub(r'[LJkK]', '', t)
+
+    if not t or t.startswith('=') or t.startswith('*') or t.startswith('!'):
+        return 0.0
+
+    # Extract the leading integer (duration number)
+    m = re.match(r'(\d+)', t)
+    if not m:
+        return 0.0
+
+    dur_num = int(m.group(1))
+    if dur_num == 0:
+        return 0.0
+
+    # Base duration in beats: 4/dur_num  (4 = quarter = 1 beat)
+    base = 4.0 / dur_num
+
+    # Count augmentation dots after removing pitch letters and accidentals
+    rest = t[m.end():]
+    dots = rest.count('.')
+    dotted = base
+    add = base / 2
+    for _ in range(dots):
+        dotted += add
+        add /= 2
+
+    return dotted
+
+
+@dataclass
+class ChordSpan:
+    """A chord holding over a duration (in beats)."""
+    chord: str           # raw chord string (e.g. "C:maj7")
+    duration: float      # total duration in beats
+    start_beat: float    # start position in beats
+
+
+def extract_chord_spans_from_kern(kern_text: str) -> List[ChordSpan]:
+    """
+    Parse full **kern text into a list of ChordSpans.
+
+    Each row has a kern token (with duration) and an mxhm token.
+    '.' in mxhm means the previous chord is sustained.
+    Barlines (=) and metadata (*) are skipped.
+
+    Args:
+        kern_text: Full system kern text with both **kern and **mxhm spines
+
+    Returns:
+        List of ChordSpan (chord label + duration in beats)
+    """
+    lines = kern_text.strip().split('\n')
+    spans: List[ChordSpan] = []
+    current_chord = None
+    current_start = 0.0
+    current_dur = 0.0
+    beat_pos = 0.0
+
+    for line in lines:
+        line = line.strip()
+        # Skip empty, metadata, headers, linebreak markers
+        if not line or line.startswith('!') or line.startswith('*'):
+            continue
+
+        parts = line.split('\t')
+        if len(parts) < 2:
+            continue
+
+        kern_tok = parts[0].strip()
+        mxhm_tok = parts[1].strip()
+
+        # Skip barlines
+        if kern_tok.startswith('='):
+            continue
+
+        # Get duration from kern token
+        dur = kern_duration_to_beats(kern_tok)
+        if dur <= 0:
+            continue
+
+        # Determine chord at this position
+        if mxhm_tok == '.':
+            # Sustain: extend current chord
+            if current_chord is not None:
+                current_dur += dur
+        else:
+            # New chord — flush previous span
+            if current_chord is not None and current_dur > 0:
+                spans.append(ChordSpan(current_chord, current_dur, current_start))
+            current_chord = mxhm_tok
+            current_start = beat_pos
+            current_dur = dur
+
+        beat_pos += dur
+
+    # Flush final span
+    if current_chord is not None and current_dur > 0:
+        spans.append(ChordSpan(current_chord, current_dur, current_start))
+
+    return spans
+
+
+# ── Vocabulary Mappings (MIREX-style) ─────────────────────────────────────
+
+def map_chord_root_only(chord_str: str) -> Optional[str]:
+    """Map chord to root note only. E.g. 'C:maj7' -> 'C'."""
+    parsed = parse_chord(chord_str)
+    return parsed.root if parsed.is_valid else None
+
+
+def map_chord_maj_min(chord_str: str) -> Optional[str]:
+    """
+    Map chord to {N, maj, min}.
+
+    Rules (MIREX):
+    - Major triad subset → root:maj
+    - Minor triad subset → root:min
+    - If neither (aug, dim, sus) → excluded from eval
+    """
+    parsed = parse_chord(chord_str)
+    if not parsed.is_valid:
+        return None
+
+    q = (parsed.quality or '').lower()
+
+    # Map qualities to maj/min
+    if q in ('', 'maj', 'dom'):
+        return f"{parsed.root}:maj"
+    elif q in ('min', 'm'):
+        return f"{parsed.root}:min"
+    elif q == 'dim':
+        # dim has minor third → treat as min
+        return f"{parsed.root}:min"
+    elif q == 'hdim':
+        # half-dim has minor third → treat as min
+        return f"{parsed.root}:min"
+    else:
+        # aug, sus4, sus2 → cannot map to maj/min
+        return None
+
+
+def map_chord_sevenths(chord_str: str) -> Optional[str]:
+    """
+    Map chord to {N, maj, min, maj7, min7, 7}.
+
+    Largest subset match from the vocabulary.
+    """
+    parsed = parse_chord(chord_str)
+    if not parsed.is_valid:
+        return None
+
+    q = (parsed.quality or '').lower()
+    ext = parsed.extension
+
+    # Has a 7th extension?
+    has_7 = ext in ('7', '9', '11', '13')  # 9/11/13 imply 7
+
+    if q in ('', 'maj', 'dom'):
+        if has_7 and q == 'maj':
+            return f"{parsed.root}:maj7"
+        elif has_7:
+            return f"{parsed.root}:7"    # dominant 7th
+        else:
+            return f"{parsed.root}:maj"
+    elif q in ('min', 'm'):
+        if has_7:
+            return f"{parsed.root}:min7"
+        else:
+            return f"{parsed.root}:min"
+    elif q == 'dim':
+        if has_7:
+            return f"{parsed.root}:min7"  # closest approximation
+        return f"{parsed.root}:min"
+    elif q == 'hdim':
+        return f"{parsed.root}:min7"      # half-dim ≈ min7(b5)
+    else:
+        return None  # aug, sus → excluded
+
+
+def map_chord_full(chord_str: str) -> Optional[str]:
+    """
+    Full chord label (root + quality + extension). No simplification.
+    Normalized for consistent comparison.
+    """
+    parsed = parse_chord(chord_str)
+    if not parsed.is_valid:
+        return None
+
+    parts = [parsed.root]
+    if parsed.quality:
+        parts.append(parsed.quality)
+    if parsed.extension:
+        parts.append(parsed.extension)
+    return ':'.join(parts)
+
+
+VOCAB_MAPPINGS = {
+    'root': map_chord_root_only,
+    'majmin': map_chord_maj_min,
+    'sevenths': map_chord_sevenths,
+    'full': map_chord_full,
+}
+
+
+# ── Chord Symbol Recall (CSR) ────────────────────────────────────────────
+
+def compute_csr(
+    pred_spans: List[ChordSpan],
+    gt_spans: List[ChordSpan],
+    vocab_map=None,
+) -> Dict[str, float]:
+    """
+    Compute Chord Symbol Recall (MIREX-style, duration-weighted).
+
+    CSR = total duration where mapped(pred) == mapped(gt)
+          / total duration of GT
+
+    Overlapping segments are compared by walking through both span
+    sequences simultaneously (continuous segmentation comparison).
+
+    Args:
+        pred_spans: Predicted ChordSpans
+        gt_spans: Ground truth ChordSpans
+        vocab_map: Optional mapping function (e.g. map_chord_root_only).
+                   If None, uses exact string comparison.
+
+    Returns:
+        Dict with 'csr', 'correct_duration', 'total_duration',
+        'n_excluded_gt', 'n_excluded_pred'
+    """
+    if not gt_spans:
+        return {'csr': 0.0, 'correct_duration': 0.0, 'total_duration': 0.0,
+                'n_excluded_gt': 0, 'n_excluded_pred': 0}
+
+    # Map labels through vocabulary
+    def map_label(chord_str):
+        if vocab_map is None:
+            return chord_str
+        return vocab_map(chord_str)
+
+    # Build flat timeline from spans: list of (start, end, label)
+    def to_timeline(spans):
+        tl = []
+        for s in spans:
+            mapped = map_label(s.chord)
+            tl.append((s.start_beat, s.start_beat + s.duration, mapped))
+        return tl
+
+    gt_tl = to_timeline(gt_spans)
+    pred_tl = to_timeline(pred_spans)
+
+    # Walk both timelines and compute overlap
+    correct_dur = 0.0
+    total_gt_dur = 0.0
+    n_excluded_gt = 0
+    n_excluded_pred = 0
+
+    gi, pi = 0, 0
+    for gt_start, gt_end, gt_label in gt_tl:
+        seg_dur = gt_end - gt_start
+
+        if gt_label is None:
+            # GT chord excluded from this vocabulary — skip
+            n_excluded_gt += 1
+            continue
+
+        total_gt_dur += seg_dur
+
+        # Find overlapping pred segments
+        for p_start, p_end, p_label in pred_tl:
+            # Compute overlap
+            overlap_start = max(gt_start, p_start)
+            overlap_end = min(gt_end, p_end)
+            overlap = max(0.0, overlap_end - overlap_start)
+
+            if overlap <= 0:
+                continue
+
+            if p_label is None:
+                # Pred can't be mapped → mismatch
+                n_excluded_pred += 1
+                continue
+
+            if gt_label == p_label:
+                correct_dur += overlap
+
+    csr = correct_dur / total_gt_dur if total_gt_dur > 0 else 0.0
+
+    return {
+        'csr': csr * 100,  # percentage
+        'correct_duration': correct_dur,
+        'total_duration': total_gt_dur,
+        'n_excluded_gt': n_excluded_gt,
+        'n_excluded_pred': n_excluded_pred,
+    }
+
+
+def compute_all_csr(
+    pred_spans: List[ChordSpan],
+    gt_spans: List[ChordSpan],
+) -> Dict[str, Dict]:
+    """
+    Compute CSR for all vocabulary levels (MIREX-style).
+
+    Returns dict with one CSR result per vocabulary:
+      'root', 'majmin', 'sevenths', 'full'
+    """
+    results = {}
+    for name, mapper in VOCAB_MAPPINGS.items():
+        results[name] = compute_csr(pred_spans, gt_spans, vocab_map=mapper)
+    return results
+
+
+# ── Segmentation Quality (Directional Hamming Distance) ──────────────────
+
+def compute_segmentation_quality(
+    pred_spans: List[ChordSpan],
+    gt_spans: List[ChordSpan],
+) -> Dict[str, float]:
+    """
+    Compute segmentation quality using directional Hamming distance.
+
+    For each segment in annotation A, find the maximally overlapping
+    segment in annotation B. The directional Hamming distance is the
+    sum of non-overlapping durations.
+
+    Two directions:
+      - over_seg:  GT→Pred  (high = prediction is over-segmented)
+      - under_seg: Pred→GT  (high = prediction is under-segmented)
+
+    Overall quality:
+      Q = 1 - max(over_seg, under_seg) / total_duration
+
+    Returns:
+        Dict with 'over_seg', 'under_seg', 'seg_quality', 'total_duration'
+    """
+    if not gt_spans and not pred_spans:
+        return {'over_seg': 0.0, 'under_seg': 0.0, 'seg_quality': 1.0,
+                'total_duration': 0.0}
+
+    # Build segment boundary lists (ignoring chord labels — just positions)
+    def get_boundaries(spans):
+        """Return list of (start, end) for each chord region."""
+        regions = []
+        for s in spans:
+            regions.append((s.start_beat, s.start_beat + s.duration))
+        return regions
+
+    gt_regions = get_boundaries(gt_spans)
+    pred_regions = get_boundaries(pred_spans)
+
+    total_dur = sum(s.duration for s in gt_spans) if gt_spans else sum(s.duration for s in pred_spans)
+
+    def directional_hamming(ref_regions, est_regions):
+        """
+        For each ref segment, find the maximally overlapping est segment.
+        Sum the non-overlapping part.
+        """
+        hamming = 0.0
+        for r_start, r_end in ref_regions:
+            r_dur = r_end - r_start
+            if r_dur <= 0:
+                continue
+            # Find max overlap with any est segment
+            max_overlap = 0.0
+            for e_start, e_end in est_regions:
+                overlap = max(0.0, min(r_end, e_end) - max(r_start, e_start))
+                max_overlap = max(max_overlap, overlap)
+            hamming += (r_dur - max_overlap)
+        return hamming
+
+    over_seg = directional_hamming(gt_regions, pred_regions)   # GT→Pred
+    under_seg = directional_hamming(pred_regions, gt_regions)  # Pred→GT
+
+    seg_quality = 1.0 - max(over_seg, under_seg) / total_dur if total_dur > 0 else 1.0
+
+    return {
+        'over_seg': over_seg,
+        'under_seg': under_seg,
+        'seg_quality': max(0.0, seg_quality) * 100,  # percentage
+        'total_duration': total_dur,
+    }
+
+
+# ── Combined MIREX-style entry point ─────────────────────────────────────
+
+def compute_mirex_metrics(pred_kern: str, gt_kern: str) -> Dict:
+    """
+    Compute all MIREX-style chord metrics from full kern text.
+
+    This is the main entry point for the new evaluation.
+    Takes complete system kern text (both **kern and **mxhm spines).
+
+    Returns:
+        Dict with:
+          'csr': {root, majmin, sevenths, full} CSR values
+          'segmentation': {over_seg, under_seg, seg_quality}
+          'pred_n_spans', 'gt_n_spans': chord change counts
+          'pred_total_dur', 'gt_total_dur': total duration in beats
+    """
+    pred_spans = extract_chord_spans_from_kern(pred_kern)
+    gt_spans = extract_chord_spans_from_kern(gt_kern)
+
+    csr_results = compute_all_csr(pred_spans, gt_spans)
+    seg_results = compute_segmentation_quality(pred_spans, gt_spans)
+
+    return {
+        'csr': csr_results,
+        'segmentation': seg_results,
+        'pred_n_spans': len(pred_spans),
+        'gt_n_spans': len(gt_spans),
+        'pred_total_dur': sum(s.duration for s in pred_spans),
+        'gt_total_dur': sum(s.duration for s in gt_spans),
+    }
+
+
+def print_mirex_metrics(metrics: Dict):
+    """Pretty print MIREX-style chord metrics."""
+    print("\n" + "─" * 60)
+    print("MIREX-STYLE CHORD METRICS (duration-weighted)")
+    print("─" * 60)
+
+    csr = metrics['csr']
+    print(f"\nChord Symbol Recall (CSR) by vocabulary:")
+    print(f"  ┌──────────────┬─────────┬──────────────────────────────┐")
+    print(f"  │ Vocabulary   │   CSR   │ Description                  │")
+    print(f"  ├──────────────┼─────────┼──────────────────────────────┤")
+    print(f"  │ Root only    │ {csr['root']['csr']:6.2f}% │ Just the root note           │")
+    print(f"  │ Maj/Min      │ {csr['majmin']['csr']:6.2f}% │ {{N, maj, min}}                │")
+    print(f"  │ Sevenths     │ {csr['sevenths']['csr']:6.2f}% │ {{N, maj, min, maj7, min7, 7}} │")
+    print(f"  │ Full chord   │ {csr['full']['csr']:6.2f}% │ Complete label               │")
+    print(f"  └──────────────┴─────────┴──────────────────────────────┘")
+
+    seg = metrics['segmentation']
+    print(f"\nSegmentation Quality:")
+    print(f"  Over-segmentation  (GT→Pred): {seg['over_seg']:.2f} beats")
+    print(f"  Under-segmentation (Pred→GT): {seg['under_seg']:.2f} beats")
+    print(f"  Quality Q: {seg['seg_quality']:.2f}%")
+
+    print(f"\nSpan counts: pred={metrics['pred_n_spans']}, gt={metrics['gt_n_spans']}")
+    print(f"Total duration: pred={metrics['pred_total_dur']:.1f}, gt={metrics['gt_total_dur']:.1f} beats")
+    print("─" * 60)
 
 
 def compute_root_f1(pred_chords: List[str], gt_chords: List[str]) -> Dict[str, float]:

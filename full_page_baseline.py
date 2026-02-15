@@ -112,8 +112,8 @@ def deskew_image(image: Image.Image, max_angle: float = 5.0) -> Image.Image:
 def compute_dynamic_boundaries(
     staff_boxes: List[Tuple[float, Tuple[int, int, int, int]]],
     image_height: int,
-    top_ratio: float = 0.7,
-    bottom_ratio: float = 0.3
+    top_ratio: float = 0.75,
+    bottom_ratio: float = 0.25
 ) -> List[Tuple[int, int, int, int]]:
     """
     Compute non-overlapping crop boundaries for each staff.
@@ -186,12 +186,127 @@ def compute_dynamic_boundaries(
     return boundaries
 
 
+def _iou_1d(a_top, a_bot, b_top, b_bot):
+    """1-D IoU of two vertical intervals."""
+    inter = max(0, min(a_bot, b_bot) - max(a_top, b_top))
+    union = max(a_bot, b_bot) - min(a_top, b_top)
+    return inter / union if union > 0 else 0.0
+
+
+def merge_overlapping_staff_boxes(
+    staff_boxes: List[Tuple[float, Tuple[int, int, int, int]]],
+    y_overlap_threshold: float = 0.6,
+) -> List[Tuple[float, Tuple[int, int, int, int]]]:
+    """
+    Deduplicate staff detections that overlap vertically (same line detected twice).
+
+    When YOLO detects a partial-width and full-width bbox for the same staff,
+    keep the narrower one to be consistent with training data.
+    """
+    if len(staff_boxes) <= 1:
+        return staff_boxes
+
+    keep = []
+    used = set()
+
+    for i in range(len(staff_boxes)):
+        if i in used:
+            continue
+
+        yc_i, (x1_i, y1_i, x2_i, y2_i) = staff_boxes[i]
+        width_i = x2_i - x1_i
+        best_idx = i
+        best_width = width_i
+
+        for j in range(i + 1, len(staff_boxes)):
+            if j in used:
+                continue
+            yc_j, (x1_j, y1_j, x2_j, y2_j) = staff_boxes[j]
+            v_iou = _iou_1d(y1_i, y2_i, y1_j, y2_j)
+            if v_iou >= y_overlap_threshold:
+                width_j = x2_j - x1_j
+                if width_j < best_width:
+                    used.add(best_idx)
+                    best_idx = j
+                    best_width = width_j
+                else:
+                    used.add(j)
+
+        keep.append(staff_boxes[best_idx])
+        used.add(best_idx)
+
+    keep.sort(key=lambda x: x[0])
+    return keep
+
+
+def interpolate_missing_systems(
+    staff_boxes: List[Tuple[float, Tuple[int, int, int, int]]],
+    gap_factor: float = 2.5,
+) -> List[Tuple[float, Tuple[int, int, int, int]]]:
+    """
+    Insert virtual staff boxes where suspiciously large vertical gaps exist.
+
+    A gap triggers interpolation only when BOTH conditions are met:
+      1) gap > gap_factor * median_gap   (relatively unusual for this page)
+      2) gap > median_height + median_gap (physically large enough to hold a system)
+
+    Per-page statistics so each page gets its own threshold.
+    """
+    if len(staff_boxes) < 3:
+        return staff_boxes
+
+    heights = [y2 - y1 for _, (_, y1, _, y2) in staff_boxes]
+    median_h = int(np.median(heights))
+
+    gaps = []
+    for i in range(len(staff_boxes) - 1):
+        _, (_, _, _, y2_cur) = staff_boxes[i]
+        _, (_, y1_next, _, _) = staff_boxes[i + 1]
+        gaps.append(y1_next - y2_cur)
+    median_gap = float(np.median(gaps))
+
+    if median_gap <= 0:
+        return staff_boxes
+
+    relative_thresh = gap_factor * median_gap
+    absolute_thresh = median_h + median_gap
+    threshold = max(relative_thresh, absolute_thresh)
+
+    new_boxes = [staff_boxes[0]]
+    for i in range(len(staff_boxes) - 1):
+        _, (x1_cur, _, x2_cur, y2_cur) = staff_boxes[i]
+        _, (x1_next, y1_next, x2_next, _) = staff_boxes[i + 1]
+        gap = y1_next - y2_cur
+
+        if gap > threshold:
+            stride = median_h + median_gap
+            n_insert = max(1, int(round(gap / stride)) - 1)
+            spacing = gap / (n_insert + 1)
+            avg_x1 = (x1_cur + x1_next) // 2
+            avg_x2 = (x2_cur + x2_next) // 2
+
+            for k in range(1, n_insert + 1):
+                vc_y = y2_cur + k * spacing
+                vy1 = max(y2_cur + 1, int(vc_y - median_h / 2))
+                vy2 = vy1 + median_h
+                y_center = (vy1 + vy2) / 2
+                new_boxes.append((y_center, (avg_x1, vy1, avg_x2, vy2)))
+
+        new_boxes.append(staff_boxes[i + 1])
+
+    new_boxes.sort(key=lambda x: x[0])
+    n_virtual = len(new_boxes) - len(staff_boxes)
+    if n_virtual > 0:
+        print(f"  Interpolated {n_virtual} virtual system(s) for missed detections")
+    return new_boxes
+
+
 def segment_staves(
     image_path: str,
     yolo_model_path: str,
     confidence_threshold: float = 0.5,
-    top_ratio: float = 0.7,
-    bottom_ratio: float = 0.3,
+    top_ratio: float = 0.75,
+    bottom_ratio: float = 0.25,
     deskew: bool = False,
     max_skew_angle: float = 5.0
 ) -> List[Image.Image]:
@@ -247,6 +362,16 @@ def segment_staves(
 
     # Sort by vertical position (top to bottom)
     staff_boxes.sort(key=lambda x: x[0])
+
+    # Merge duplicate detections (partial + full width on same line)
+    n_before = len(staff_boxes)
+    staff_boxes = merge_overlapping_staff_boxes(staff_boxes)
+    n_merged = n_before - len(staff_boxes)
+    if n_merged > 0:
+        print(f"  Merged {n_merged} duplicate detection(s)")
+
+    # Interpolate virtual boxes for missed systems (large gaps)
+    staff_boxes = interpolate_missing_systems(staff_boxes)
 
     # Compute dynamic non-overlapping boundaries
     boundaries = compute_dynamic_boundaries(

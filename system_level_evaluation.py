@@ -240,7 +240,7 @@ def run_system_level_evaluation(
             yolo_crops = segment_staves(
                 image_path=img_path,
                 yolo_model_path=yolo_model_path,
-                confidence_threshold=0.6,
+                confidence_threshold=0.2,
                 deskew=True
             )
 
