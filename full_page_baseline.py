@@ -664,7 +664,10 @@ if __name__ == "__main__":
             parts = line.split('\t')
             if len(parts) < 2:
                 continue
-            tok = parts[1].strip()
+            # Always take the last column — mxhm is the rightmost spine
+            # (polyphonic passages use *^ to split kern into multiple spines,
+            #  pushing mxhm from column 2 to column 3+)
+            tok = parts[-1].strip()
             if not tok or tok.startswith('**') or tok.startswith('*') or tok.startswith('=') or tok.startswith('!'):
                 continue
             tokens.append(tok)
