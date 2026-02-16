@@ -241,56 +241,58 @@ def merge_overlapping_staff_boxes(
 
 def interpolate_missing_systems(
     staff_boxes: List[Tuple[float, Tuple[int, int, int, int]]],
-    gap_factor: float = 2.5,
+    gap_factor: float = 1.8,
 ) -> List[Tuple[float, Tuple[int, int, int, int]]]:
     """
-    Insert virtual staff boxes where suspiciously large vertical gaps exist.
+    Insert virtual staff boxes where a missing system is detected.
 
-    A gap triggers interpolation only when BOTH conditions are met:
-      1) gap > gap_factor * median_gap   (relatively unusual for this page)
-      2) gap > median_height + median_gap (physically large enough to hold a system)
+    Uses top-left point distances: compute the median distance between
+    consecutive top-left corners (x1, y1). If the distance between two
+    consecutive top-left points exceeds gap_factor * median_distance,
+    one or more systems are likely missing.
 
     Per-page statistics so each page gets its own threshold.
     """
     if len(staff_boxes) < 3:
         return staff_boxes
 
-    heights = [y2 - y1 for _, (_, y1, _, y2) in staff_boxes]
-    median_h = int(np.median(heights))
-
-    gaps = []
+    # Compute distances between consecutive top-left points
+    tl_dists = []
     for i in range(len(staff_boxes) - 1):
-        _, (_, _, _, y2_cur) = staff_boxes[i]
-        _, (_, y1_next, _, _) = staff_boxes[i + 1]
-        gaps.append(y1_next - y2_cur)
-    median_gap = float(np.median(gaps))
+        _, (x1_cur, y1_cur, _, _) = staff_boxes[i]
+        _, (x1_next, y1_next, _, _) = staff_boxes[i + 1]
+        dist = ((x1_next - x1_cur) ** 2 + (y1_next - y1_cur) ** 2) ** 0.5
+        tl_dists.append(dist)
 
-    if median_gap <= 0:
+    median_dist = float(np.median(tl_dists))
+    if median_dist <= 0:
         return staff_boxes
 
-    relative_thresh = gap_factor * median_gap
-    absolute_thresh = median_h + median_gap
-    threshold = max(relative_thresh, absolute_thresh)
+    threshold = gap_factor * median_dist
+
+    # Median box dimensions for virtual box sizing
+    heights = [y2 - y1 for _, (_, y1, _, y2) in staff_boxes]
+    widths = [x2 - x1 for _, (x1, _, x2, _) in staff_boxes]
+    median_h = int(np.median(heights))
+    median_w = int(np.median(widths))
 
     new_boxes = [staff_boxes[0]]
     for i in range(len(staff_boxes) - 1):
-        _, (x1_cur, _, x2_cur, y2_cur) = staff_boxes[i]
+        _, (x1_cur, y1_cur, x2_cur, _) = staff_boxes[i]
         _, (x1_next, y1_next, x2_next, _) = staff_boxes[i + 1]
-        gap = y1_next - y2_cur
+        dist = tl_dists[i]
 
-        if gap > threshold:
-            stride = median_h + median_gap
-            n_insert = max(1, int(round(gap / stride)) - 1)
-            spacing = gap / (n_insert + 1)
-            avg_x1 = (x1_cur + x1_next) // 2
-            avg_x2 = (x2_cur + x2_next) // 2
-
+        if dist > threshold:
+            n_insert = max(1, int(round(dist / median_dist)) - 1)
             for k in range(1, n_insert + 1):
-                vc_y = y2_cur + k * spacing
-                vy1 = max(y2_cur + 1, int(vc_y - median_h / 2))
+                frac = k / (n_insert + 1)
+                # Interpolate top-left position
+                vx1 = int(x1_cur + frac * (x1_next - x1_cur))
+                vy1 = int(y1_cur + frac * (y1_next - y1_cur))
+                vx2 = vx1 + median_w
                 vy2 = vy1 + median_h
                 y_center = (vy1 + vy2) / 2
-                new_boxes.append((y_center, (avg_x1, vy1, avg_x2, vy2)))
+                new_boxes.append((y_center, (vx1, vy1, vx2, vy2)))
 
         new_boxes.append(staff_boxes[i + 1])
 
@@ -753,30 +755,32 @@ if __name__ == "__main__":
         agg_page = aggregate_page_chord_metrics(page_chord_results)
         print_page_chord_metrics(agg_page)
 
-    # Show the 5 worst chord recognition pages
+    # Show the 10 worst and 10 best chord recognition pages
     pages_with_chord = [m for m in per_sample_metrics if 'page_chord_metrics' in m]
     if pages_with_chord:
         pages_with_chord.sort(key=lambda x: x['page_chord_metrics']['alignment_score'])
-        worst_5 = pages_with_chord[:5]
-        print(f"\n{'='*60}")
-        print("5 WORST CHORD RECOGNITION PAGES")
-        print(f"{'='*60}")
-        for i, m in enumerate(worst_5):
-            cm = m['page_chord_metrics']
-            img_name = Path(m['image']).stem
-            print(f"\n  {i+1}. {img_name}")
-            print(f"     Alignment score: {cm['alignment_score']:.1f}%  (ED={cm['edit_distance']}, pred={cm['pred_count']}, gt={cm['gt_count']})")
-            print(f"     Matches={cm['matches']}, Subs={cm['substitutions']}, Ins={cm['insertions']}, Del={cm['deletions']}")
-            if cm['matches'] > 0:
-                print(f"     Quality acc: {cm['quality_accuracy']:.1f}%  Extension acc: {cm['extension_accuracy']:.1f}%  Full acc: {cm['full_accuracy']:.1f}%")
-            else:
-                print(f"     No matched roots to evaluate quality/extension")
-            # Show pred vs gt chords for comparison
-            pred_spines = extract_spines(m['prediction'])
-            gt_spines = extract_spines(m['ground_truth'])
-            pred_ch = extract_chords_from_mxhm(pred_spines.get('**mxhm', []))
-            gt_ch = extract_chords_from_mxhm(gt_spines.get('**mxhm', []))
-            print(f"     Pred chords: {pred_ch}")
-            print(f"     GT   chords: {gt_ch}")
-        print(f"{'='*60}\n")
+
+        for label, samples in [("10 WORST", pages_with_chord[:10]),
+                               ("10 BEST", pages_with_chord[-10:][::-1])]:
+            print(f"\n{'='*60}")
+            print(f"{label} CHORD RECOGNITION PAGES")
+            print(f"{'='*60}")
+            for i, m in enumerate(samples):
+                cm = m['page_chord_metrics']
+                img_name = Path(m['image']).stem
+                print(f"\n  {i+1}. {img_name}")
+                print(f"     Alignment score: {cm['alignment_score']:.1f}%  (ED={cm['edit_distance']}, pred={cm['pred_count']}, gt={cm['gt_count']})")
+                print(f"     Matches={cm['matches']}, Subs={cm['substitutions']}, Ins={cm['insertions']}, Del={cm['deletions']}")
+                if cm['matches'] > 0:
+                    print(f"     Quality acc: {cm['quality_accuracy']:.1f}%  Extension acc: {cm['extension_accuracy']:.1f}%  Full acc: {cm['full_accuracy']:.1f}%")
+                else:
+                    print(f"     No matched roots to evaluate quality/extension")
+                # Show pred vs gt chords for comparison
+                pred_spines = extract_spines(m['prediction'])
+                gt_spines = extract_spines(m['ground_truth'])
+                pred_ch = extract_chords_from_mxhm(pred_spines.get('**mxhm', []))
+                gt_ch = extract_chords_from_mxhm(gt_spines.get('**mxhm', []))
+                print(f"     Pred chords: {pred_ch}")
+                print(f"     GT   chords: {gt_ch}")
+            print(f"{'='*60}\n")
 
