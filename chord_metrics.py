@@ -1285,46 +1285,23 @@ def compute_page_chord_metrics(pred_tokens: List[str], gt_tokens: List[str]) -> 
     # Step 2: ED on chord-only tokens — for clean Chord SER
     alignment_no_dots = _edit_distance_align(pred_chords, gt_chords)
 
-    # Step 3: Accuracy hierarchy from with-dot alignment
-    # Denominator = n_gt_chords (unconditional)
-    root_correct = 0
-    quality_correct = 0
-    full_correct = 0
+    # Step 3: Root-only ED — extract roots, run separate edit distance
+    pred_roots = [parse_chord(t).root for t in pred_chords if parse_chord(t).root is not None]
+    gt_roots = [parse_chord(t).root for t in gt_chords if parse_chord(t).root is not None]
+    n_gt_roots = len(gt_roots)
+    alignment_roots = _edit_distance_align(pred_roots, gt_roots)
 
-    for pred_idx, gt_idx in alignment_with_dots['aligned_pairs']:
-        pred_tok = pred_tokens[pred_idx]
-        gt_tok = gt_tokens[gt_idx]
+    root_correct = alignment_roots['chord_matches']
+    root_errors = alignment_roots['edit_distance']
+    root_ser = root_errors / n_gt_roots * 100 if n_gt_roots > 0 else 100.0
 
-        # Skip if either is a dot
-        if pred_tok == '.' or gt_tok == '.':
-            continue
-
-        pred_p = parse_chord(pred_tok)
-        gt_p = parse_chord(gt_tok)
-
-        if pred_p.root is not None and gt_p.root is not None and pred_p.root == gt_p.root:
-            root_correct += 1
-
-            pred_qual = pred_p.quality if pred_p.quality else "dom"
-            gt_qual = gt_p.quality if gt_p.quality else "dom"
-            pred_ext = pred_p.extension if pred_p.extension else "none"
-            gt_ext = gt_p.extension if gt_p.extension else "none"
-
-            if pred_qual == gt_qual:
-                quality_correct += 1
-                if pred_ext == gt_ext:
-                    full_correct += 1
-
-    # Chord SER = chord-only ED / N_gt_chords (clean error rate)
+    # Full chord correct & SER from chord-only ED (alignment_no_dots)
+    full_correct = alignment_no_dots['chord_matches']
     chord_ser_no_dots = alignment_no_dots['edit_distance'] / n_gt_chords * 100 if n_gt_chords > 0 else 100.0
+
     # Token SER = full-token ED / N_gt_tokens (structural alignment metric)
     n_gt_tokens = len(gt_tokens)
     token_ser_with_dots = alignment_with_dots['edit_distance'] / n_gt_tokens * 100 if n_gt_tokens > 0 else 100.0
-
-    # Accuracy hierarchy (unconditional, denominator = n_gt_chords)
-    root_acc = root_correct / n_gt_chords * 100 if n_gt_chords > 0 else 0.0
-    quality_acc = quality_correct / n_gt_chords * 100 if n_gt_chords > 0 else 0.0
-    full_acc = full_correct / n_gt_chords * 100 if n_gt_chords > 0 else 0.0
 
     return {
         # Counts
@@ -1345,16 +1322,19 @@ def compute_page_chord_metrics(pred_tokens: List[str], gt_tokens: List[str]) -> 
         'subs_no_dots': alignment_no_dots['substitutions'],
         'ins_no_dots': alignment_no_dots['insertions'],
         'del_no_dots': alignment_no_dots['deletions'],
-        # Chord SER (both normalized by n_gt_chords)
+        # SER values
         'chord_ser_no_dots': chord_ser_no_dots,
         'token_ser_with_dots': token_ser_with_dots,
-        # Accuracy hierarchy (unconditional, denominator = n_gt_chords)
+        # Root-only ED
+        'n_gt_roots': n_gt_roots,
         'root_correct': root_correct,
-        'root_accuracy': root_acc,
-        'quality_correct': quality_correct,
-        'quality_accuracy': quality_acc,
+        'root_errors': root_errors,
+        'root_ser': root_ser,
+        'subs_roots': alignment_roots['substitutions'],
+        'ins_roots': alignment_roots['insertions'],
+        'del_roots': alignment_roots['deletions'],
+        # Full chord correct (from chord-only ED)
         'full_correct': full_correct,
-        'full_accuracy': full_acc,
     }
 
 
@@ -1401,19 +1381,20 @@ def aggregate_page_chord_metrics(page_metrics_list: List[Dict]) -> Dict:
     per_unit_ser_no_dots = [m['chord_ser_no_dots'] for m in page_metrics_list]
     per_unit_ser_with_dots = [m['token_ser_with_dots'] for m in page_metrics_list]
 
-    # Accuracy hierarchy totals (unconditional, denominator = total GT chords)
+    # Root-only ED totals
+    total_gt_roots = sum(m['n_gt_roots'] for m in page_metrics_list)
     total_root_correct = sum(m['root_correct'] for m in page_metrics_list)
-    total_qual_correct = sum(m['quality_correct'] for m in page_metrics_list)
+    total_root_errors = sum(m['root_errors'] for m in page_metrics_list)
+    total_subs_roots = sum(m['subs_roots'] for m in page_metrics_list)
+    total_ins_roots = sum(m['ins_roots'] for m in page_metrics_list)
+    total_del_roots = sum(m['del_roots'] for m in page_metrics_list)
+    agg_root_ser = total_root_errors / total_gt_roots * 100 if total_gt_roots > 0 else 100.0
+
+    # Full chord correct totals
     total_full_correct = sum(m['full_correct'] for m in page_metrics_list)
 
-    agg_root_acc = total_root_correct / total_gt_chords * 100 if total_gt_chords > 0 else 0.0
-    agg_qual_acc = total_qual_correct / total_gt_chords * 100 if total_gt_chords > 0 else 0.0
-    agg_full_acc = total_full_correct / total_gt_chords * 100 if total_gt_chords > 0 else 0.0
-
-    # Per-unit accuracy scores
-    per_unit_root = [m['root_accuracy'] for m in page_metrics_list if m['n_gt_chords'] > 0]
-    per_unit_quality = [m['quality_accuracy'] for m in page_metrics_list if m['n_gt_chords'] > 0]
-    per_unit_full = [m['full_accuracy'] for m in page_metrics_list if m['n_gt_chords'] > 0]
+    # Per-unit SER for roots
+    per_unit_root_ser = [m['root_ser'] for m in page_metrics_list]
 
     return {
         'n_units': n,
@@ -1441,16 +1422,17 @@ def aggregate_page_chord_metrics(page_metrics_list: List[Dict]) -> Dict:
         'agg_ser_with_dots': agg_ser_with_dots,
         'per_unit_ser_no_dots': per_unit_ser_no_dots,
         'per_unit_ser_with_dots': per_unit_ser_with_dots,
-        # Accuracy hierarchy (unconditional)
+        # Root-only ED
+        'total_gt_roots': total_gt_roots,
         'total_root_correct': total_root_correct,
-        'agg_root_accuracy': agg_root_acc,
-        'total_quality_correct': total_qual_correct,
-        'agg_quality_accuracy': agg_qual_acc,
+        'total_root_errors': total_root_errors,
+        'total_subs_roots': total_subs_roots,
+        'total_ins_roots': total_ins_roots,
+        'total_del_roots': total_del_roots,
+        'agg_root_ser': agg_root_ser,
+        'per_unit_root_ser': per_unit_root_ser,
+        # Full chord correct
         'total_full_correct': total_full_correct,
-        'agg_full_accuracy': agg_full_acc,
-        'per_unit_root_scores': per_unit_root,
-        'per_unit_quality_scores': per_unit_quality,
-        'per_unit_full_scores': per_unit_full,
     }
 
 
@@ -1479,13 +1461,25 @@ def print_page_chord_metrics(agg: Dict, unit_label: str = "page"):
     ser_wd = agg['per_unit_ser_with_dots']
 
     tgt = agg['total_gt_tokens']
-    print(f"\nSymbol Error Rates:")
-    print(f"  ┌──────────────────┬────────────────────────────────┬─────────────────────┐")
-    print(f"  │ Version          │ Aggregate                      │ Per {unit_label:<7s}         │")
-    print(f"  ├──────────────────┼────────────────────────────────┼─────────────────────┤")
-    print(f"  │ Chord SER        │  {agg['agg_ser_no_dots']:6.2f}%  ({agg['total_ed_no_dots']:4d} err / {tgc} chords) │ {np.mean(ser_nd):6.2f}% ± {np.std(ser_nd):5.2f}% │")
-    print(f"  │ Token SER (dots) │  {agg['agg_ser_with_dots']:6.2f}%  ({agg['total_ed_with_dots']:4d} err / {tgt} tokens) │ {np.mean(ser_wd):6.2f}% ± {np.std(ser_wd):5.2f}% │")
-    print(f"  └──────────────────┴────────────────────────────────┴─────────────────────┘")
+    tgr = agg['total_gt_roots']
+
+    # Compute accuracies = 1 - SER
+    agg_root_acc = max(0.0, 100.0 - agg['agg_root_ser'])
+    agg_chord_acc = max(0.0, 100.0 - agg['agg_ser_no_dots'])
+    agg_struct_acc = max(0.0, 100.0 - agg['agg_ser_with_dots'])
+
+    per_root_acc = [max(0.0, 100.0 - s) for s in agg['per_unit_root_ser']]
+    per_chord_acc = [max(0.0, 100.0 - s) for s in ser_nd]
+    per_struct_acc = [max(0.0, 100.0 - s) for s in ser_wd]
+
+    print(f"\nAccuracy = 1 - (S+I+D)/N_gt:")
+    print(f"  ┌─────────────────────┬──────────────────────────────────────┬─────────────────────┐")
+    print(f"  │ Metric              │ Aggregate                            │ Per {unit_label:<7s}         │")
+    print(f"  ├─────────────────────┼──────────────────────────────────────┼─────────────────────┤")
+    print(f"  │ Root Accuracy       │  {agg_root_acc:6.2f}%  ({agg['total_root_correct']:4d} correct / {tgr} roots)  │ {np.mean(per_root_acc):6.2f}% ± {np.std(per_root_acc):5.2f}% │")
+    print(f"  │ Chord Accuracy      │  {agg_chord_acc:6.2f}%  ({agg['total_full_correct']:4d} correct / {tgc} chords) │ {np.mean(per_chord_acc):6.2f}% ± {np.std(per_chord_acc):5.2f}% │")
+    print(f"  │ Structure Accuracy  │  {agg_struct_acc:6.2f}%  ({tgt - agg['total_ed_with_dots']:4d} correct / {tgt} tokens) │ {np.mean(per_struct_acc):6.2f}% ± {np.std(per_struct_acc):5.2f}% │")
+    print(f"  └─────────────────────┴──────────────────────────────────────┴─────────────────────┘")
     print(f"  Chords: {agg['total_pred_chords']} pred, {tgc} GT")
     print(f"  Tokens (with dots): {agg['total_pred_tokens']} pred, {tgt} GT")
 
@@ -1514,19 +1508,10 @@ def print_page_chord_metrics(agg: Dict, unit_label: str = "page"):
         print(f"    Insertions:    {agg['total_ins_no_dots']:5d}  ({np.mean(per_i2):.1f} ± {np.std(per_i2):.1f} per {unit_label})")
         print(f"    Deletions:     {agg['total_del_no_dots']:5d}  ({np.mean(per_d2):.1f} ± {np.std(per_d2):.1f} per {unit_label})")
 
-    # --- Accuracy hierarchy (from with-dot alignment) ---
-    root_scores = agg['per_unit_root_scores']
-    qual_scores = agg['per_unit_quality_scores']
-    full_scores = agg['per_unit_full_scores']
-
-    print(f"\nAccuracy Hierarchy (from with-dot alignment, /{tgc} GT chords):")
-    print(f"  ┌──────────────────┬───────────┬──────────┬─────────────────────┐")
-    print(f"  │ Level            │ Correct   │ Accuracy │ Per {unit_label:<7s}         │")
-    print(f"  ├──────────────────┼───────────┼──────────┼─────────────────────┤")
-    print(f"  │ Root             │ {agg['total_root_correct']:5d}/{tgc} │  {agg['agg_root_accuracy']:6.2f}% │ {np.mean(root_scores):6.2f}% ± {np.std(root_scores):5.2f}% │")
-    print(f"  │ Root + Quality   │ {agg['total_quality_correct']:5d}/{tgc} │  {agg['agg_quality_accuracy']:6.2f}% │ {np.mean(qual_scores):6.2f}% ± {np.std(qual_scores):5.2f}% │")
-    print(f"  │ Full Chord       │ {agg['total_full_correct']:5d}/{tgc} │  {agg['agg_full_accuracy']:6.2f}% │ {np.mean(full_scores):6.2f}% ± {np.std(full_scores):5.2f}% │")
-    print(f"  └──────────────────┴───────────┴──────────┴─────────────────────┘")
+    # --- Root ED breakdown ---
+    print(f"\n  Root-only ED breakdown:")
+    print(f"    Root correct:  {agg['total_root_correct']:5d}/{tgr}")
+    print(f"    Root errors:   {agg['total_root_errors']:5d}  (Subs={agg['total_subs_roots']} Ins={agg['total_ins_roots']} Del={agg['total_del_roots']})")
 
     print(f"{'='*60}")
 

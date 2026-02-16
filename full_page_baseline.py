@@ -812,18 +812,21 @@ if __name__ == "__main__":
         for label, samples in [("5 WORST", pages_with_chord[:5]),
                                ("5 BEST", pages_with_chord[-5:][::-1])]:
             print(f"\n{'='*60}")
-            print(f"{label} CHORD RECOGNITION PAGES (per-system ED)")
+            print(f"{label} CHORD RECOGNITION PAGES (Root / Chord / Structure Accuracy)")
             print(f"{'='*60}")
             for i, m in enumerate(samples):
                 cm = m['per_system_chord_metrics']
                 img_name = Path(m['image']).stem
                 tgc = cm['total_gt_chords']
-                total_errors = cm['total_subs_no_dots'] + cm['total_ins_no_dots'] + cm['total_del_no_dots']
-                total_errors_wd = cm['total_subs_with_dots'] + cm['total_ins_with_dots'] + cm['total_del_with_dots']
                 tgt = cm['total_gt_tokens']
-                print(f"\n  {i+1}. {img_name}  ({cm['n_units']} systems, {tgc} GT chords, {tgt} GT tokens)")
-                print(f"     Chord SER:  {cm['agg_ser_no_dots']:.1f}%  Errors={total_errors}/{tgc}  (Subs={cm['total_subs_no_dots']} Ins={cm['total_ins_no_dots']} Del={cm['total_del_no_dots']})")
-                print(f"     Token SER:  {cm['agg_ser_with_dots']:.1f}%  Errors={total_errors_wd}/{tgt}  (Subs={cm['total_subs_with_dots']} Ins={cm['total_ins_with_dots']} Del={cm['total_del_with_dots']})")
+                tgr = cm['total_gt_roots']
+                root_acc = max(0.0, 100.0 - cm['agg_root_ser'])
+                chord_acc = max(0.0, 100.0 - cm['agg_ser_no_dots'])
+                struct_acc = max(0.0, 100.0 - cm['agg_ser_with_dots'])
+                print(f"\n  {i+1}. {img_name}  ({cm['n_units']} systems, {tgc} GT chords)")
+                print(f"     Root Acc:      {root_acc:.1f}% = 1 - {cm['total_root_errors']}/{tgr}  (S={cm['total_subs_roots']} I={cm['total_ins_roots']} D={cm['total_del_roots']})")
+                print(f"     Chord Acc:     {chord_acc:.1f}% = 1 - {cm['total_ed_no_dots']}/{tgc}  (S={cm['total_subs_no_dots']} I={cm['total_ins_no_dots']} D={cm['total_del_no_dots']})")
+                print(f"     Structure Acc: {struct_acc:.1f}% = 1 - {cm['total_ed_with_dots']}/{tgt}  (S={cm['total_subs_with_dots']} I={cm['total_ins_with_dots']} D={cm['total_del_with_dots']})")
                 # Show pred vs gt tokens per system for comparison (including dots)
                 pred_sys_chunks = m['prediction'].split('!!linebreak:original')
                 gt_sys_chunks = m['ground_truth'].split('!!linebreak:original')
