@@ -1475,13 +1475,13 @@ def print_page_chord_metrics(agg: Dict, unit_label: str = "page"):
     ser_nd = agg['per_unit_ser_no_dots']
     ser_wd = agg['per_unit_ser_with_dots']
 
-    print(f"\nChord SER = ED / N_gt_chords:")
-    print(f"  ┌──────────────────┬───────────┬─────────────────────┐")
-    print(f"  │ Version          │ Aggregate │ Per {unit_label:<7s}         │")
-    print(f"  ├──────────────────┼───────────┼─────────────────────┤")
-    print(f"  │ Without dots     │  {agg['agg_ser_no_dots']:6.2f}%  │ {np.mean(ser_nd):6.2f}% ± {np.std(ser_nd):5.2f}% │")
-    print(f"  │ With dots        │  {agg['agg_ser_with_dots']:6.2f}%  │ {np.mean(ser_wd):6.2f}% ± {np.std(ser_wd):5.2f}% │")
-    print(f"  └──────────────────┴───────────┴─────────────────────┘")
+    print(f"\nChord SER = (S + I + D) / N_gt_chords:")
+    print(f"  ┌──────────────────┬───────────────────────────────┬─────────────────────┐")
+    print(f"  │ Version          │ Aggregate                     │ Per {unit_label:<7s}         │")
+    print(f"  ├──────────────────┼───────────────────────────────┼─────────────────────┤")
+    print(f"  │ Without dots     │  {agg['agg_ser_no_dots']:6.2f}%  ({agg['total_ed_no_dots']:4d} err / {tgc} GT) │ {np.mean(ser_nd):6.2f}% ± {np.std(ser_nd):5.2f}% │")
+    print(f"  │ With dots        │  {agg['agg_ser_with_dots']:6.2f}%  ({agg['total_ed_with_dots']:4d} err / {tgc} GT) │ {np.mean(ser_wd):6.2f}% ± {np.std(ser_wd):5.2f}% │")
+    print(f"  └──────────────────┴───────────────────────────────┴─────────────────────┘")
     print(f"  Chords: {agg['total_pred_chords']} pred, {tgc} GT")
     print(f"  Tokens (with dots): {agg['total_pred_tokens']} pred, {agg['total_gt_tokens']} GT")
 
