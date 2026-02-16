@@ -236,7 +236,7 @@ def extract_tokens_from_mxhm(mxhm_content: str) -> List[str]:
     tokens = []
     for line in mxhm_content.split('\n'):
         line = line.strip()
-        if not line or line.startswith('=') or line.startswith('*'):
+        if not line or line.startswith('=') or line.startswith('*') or line.startswith('!'):
             continue
         tokens.append(line)
     return tokens

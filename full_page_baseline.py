@@ -665,7 +665,7 @@ if __name__ == "__main__":
             if len(parts) < 2:
                 continue
             tok = parts[1].strip()
-            if not tok or tok.startswith('**') or tok.startswith('*') or tok.startswith('='):
+            if not tok or tok.startswith('**') or tok.startswith('*') or tok.startswith('=') or tok.startswith('!'):
                 continue
             tokens.append(tok)
         return tokens
