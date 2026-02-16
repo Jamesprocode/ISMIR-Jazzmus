@@ -644,7 +644,11 @@ if __name__ == "__main__":
     checkpint_path = "/home/hice1/jwang3180/jazzmus/ISMIR-Jazzmus/weights/smt_sys_best/smt_pre_syn_medium.ckpt"
     device = "cuda" if torch.cuda.is_available() else "cpu"
     yolo_model_path = "/home/hice1/jwang3180/jazzmus/ISMIR-Jazzmus/yolo_weigths/yolov11s_20241108.pt"
+<<<<<<< HEAD
     test_split_file = "/home/hice1/jwang3180/jazzmus/ISMIR-Jazzmus/data/jazzmus_fullpage/splits/val_0.txt"
+=======
+    test_split_file = "/home/hice1/jwang3180/jazzmus/ISMIR-Jazzmus/data/jazzmus_fullpage/splits/val_0.txt"
+>>>>>>> 81cdd0d (ran evaluation)
 
     # Load test split
     with open(test_split_file, 'r') as f:

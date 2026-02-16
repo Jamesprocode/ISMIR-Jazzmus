@@ -269,3 +269,4 @@ pyrightconfig.json
 .history
 .ionide
 yolo_detection_viz/*
+yolo_detection_viz_70/*

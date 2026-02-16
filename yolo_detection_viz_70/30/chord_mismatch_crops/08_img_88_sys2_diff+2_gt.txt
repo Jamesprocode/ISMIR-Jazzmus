@@ -1,0 +1,27 @@
+**kern	**mxhm
+*I"Electric Piano	*
+*clefG2	*
+*k[b-e-a-]	*
+*E-:	*
+*M4/4	*
+=	=
+4g	F:min
+2b-	.
+4g	.
+=	=
+2b-	Bb:maj
+2c	.
+=	=
+[1g	Eb:maj
+=	=
+1g]	F:min7
+=	=
+1e-	Eb:maj
+=	=
+4r	.
+4e-	.
+4.d	.
+8e-	.
+=!|:	=!|:
+1cc-X	Ab:min
+*-	*-

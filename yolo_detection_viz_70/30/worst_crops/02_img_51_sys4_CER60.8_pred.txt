@@ -1,0 +1,14 @@
+**kern	**mxhm
+*clefG2	*
+*k[b-]	*
+*M4/4	*
+=	=
+2dd]	.
+2cc_	.
+=	=
+2dd]	.
+4r	.
+[8ccJ	.
+=	=
+2ee]	.
+*-	*b:none
