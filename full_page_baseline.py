@@ -820,10 +820,10 @@ if __name__ == "__main__":
                 tgc = cm['total_gt_chords']
                 total_errors = cm['total_subs_no_dots'] + cm['total_ins_no_dots'] + cm['total_del_no_dots']
                 total_errors_wd = cm['total_subs_with_dots'] + cm['total_ins_with_dots'] + cm['total_del_with_dots']
-                print(f"\n  {i+1}. {img_name}  ({cm['n_units']} systems, {tgc} GT chords)")
-                print(f"     Chord SER (no dots):   {cm['agg_ser_no_dots']:.1f}%  ({total_errors} errors / {tgc} GT)  Subs={cm['total_subs_no_dots']} Ins={cm['total_ins_no_dots']} Del={cm['total_del_no_dots']}")
-                print(f"     Chord SER (with dots): {cm['agg_ser_with_dots']:.1f}%  ({total_errors_wd} errors / {tgc} GT)  Subs={cm['total_subs_with_dots']} Ins={cm['total_ins_with_dots']} Del={cm['total_del_with_dots']}")
-                print(f"     Root acc: {cm['agg_root_accuracy']:.1f}%  Quality acc: {cm['agg_quality_accuracy']:.1f}%  Full acc: {cm['agg_full_accuracy']:.1f}%")
+                tgt = cm['total_gt_tokens']
+                print(f"\n  {i+1}. {img_name}  ({cm['n_units']} systems, {tgc} GT chords, {tgt} GT tokens)")
+                print(f"     Chord SER:  {cm['agg_ser_no_dots']:.1f}%  Errors={total_errors}/{tgc}  (Subs={cm['total_subs_no_dots']} Ins={cm['total_ins_no_dots']} Del={cm['total_del_no_dots']})")
+                print(f"     Token SER:  {cm['agg_ser_with_dots']:.1f}%  Errors={total_errors_wd}/{tgt}  (Subs={cm['total_subs_with_dots']} Ins={cm['total_ins_with_dots']} Del={cm['total_del_with_dots']})")
                 # Show pred vs gt tokens per system for comparison (including dots)
                 pred_sys_chunks = m['prediction'].split('!!linebreak:original')
                 gt_sys_chunks = m['ground_truth'].split('!!linebreak:original')

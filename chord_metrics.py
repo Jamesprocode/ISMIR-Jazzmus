@@ -1315,9 +1315,11 @@ def compute_page_chord_metrics(pred_tokens: List[str], gt_tokens: List[str]) -> 
                 if pred_ext == gt_ext:
                     full_correct += 1
 
-    # SER = ED / N_gt_chords (both versions use chord count as denominator)
+    # Chord SER = chord-only ED / N_gt_chords (clean error rate)
     chord_ser_no_dots = alignment_no_dots['edit_distance'] / n_gt_chords * 100 if n_gt_chords > 0 else 100.0
-    chord_ser_with_dots = alignment_with_dots['edit_distance'] / n_gt_chords * 100 if n_gt_chords > 0 else 100.0
+    # Token SER = full-token ED / N_gt_tokens (structural alignment metric)
+    n_gt_tokens = len(gt_tokens)
+    token_ser_with_dots = alignment_with_dots['edit_distance'] / n_gt_tokens * 100 if n_gt_tokens > 0 else 100.0
 
     # Accuracy hierarchy (unconditional, denominator = n_gt_chords)
     root_acc = root_correct / n_gt_chords * 100 if n_gt_chords > 0 else 0.0
@@ -1345,7 +1347,7 @@ def compute_page_chord_metrics(pred_tokens: List[str], gt_tokens: List[str]) -> 
         'del_no_dots': alignment_no_dots['deletions'],
         # Chord SER (both normalized by n_gt_chords)
         'chord_ser_no_dots': chord_ser_no_dots,
-        'chord_ser_with_dots': chord_ser_with_dots,
+        'token_ser_with_dots': token_ser_with_dots,
         # Accuracy hierarchy (unconditional, denominator = n_gt_chords)
         'root_correct': root_correct,
         'root_accuracy': root_acc,
@@ -1390,13 +1392,14 @@ def aggregate_page_chord_metrics(page_metrics_list: List[Dict]) -> Dict:
     total_ins_nd = sum(m['ins_no_dots'] for m in page_metrics_list)
     total_del_nd = sum(m['del_no_dots'] for m in page_metrics_list)
 
-    # Aggregate Chord SER (both versions, denominator = total GT chords)
+    # Chord SER: chord-only ED / total GT chords
     agg_ser_no_dots = total_ed_no_dots / total_gt_chords * 100 if total_gt_chords > 0 else 100.0
-    agg_ser_with_dots = total_ed_with_dots / total_gt_chords * 100 if total_gt_chords > 0 else 100.0
+    # Token SER: full-token ED / total GT tokens (structural metric)
+    agg_ser_with_dots = total_ed_with_dots / total_gt_tokens * 100 if total_gt_tokens > 0 else 100.0
 
     # Per-unit SER scores
     per_unit_ser_no_dots = [m['chord_ser_no_dots'] for m in page_metrics_list]
-    per_unit_ser_with_dots = [m['chord_ser_with_dots'] for m in page_metrics_list]
+    per_unit_ser_with_dots = [m['token_ser_with_dots'] for m in page_metrics_list]
 
     # Accuracy hierarchy totals (unconditional, denominator = total GT chords)
     total_root_correct = sum(m['root_correct'] for m in page_metrics_list)
@@ -1475,15 +1478,16 @@ def print_page_chord_metrics(agg: Dict, unit_label: str = "page"):
     ser_nd = agg['per_unit_ser_no_dots']
     ser_wd = agg['per_unit_ser_with_dots']
 
-    print(f"\nChord SER = (S + I + D) / N_gt_chords:")
-    print(f"  ┌──────────────────┬───────────────────────────────┬─────────────────────┐")
-    print(f"  │ Version          │ Aggregate                     │ Per {unit_label:<7s}         │")
-    print(f"  ├──────────────────┼───────────────────────────────┼─────────────────────┤")
-    print(f"  │ Without dots     │  {agg['agg_ser_no_dots']:6.2f}%  ({agg['total_ed_no_dots']:4d} err / {tgc} GT) │ {np.mean(ser_nd):6.2f}% ± {np.std(ser_nd):5.2f}% │")
-    print(f"  │ With dots        │  {agg['agg_ser_with_dots']:6.2f}%  ({agg['total_ed_with_dots']:4d} err / {tgc} GT) │ {np.mean(ser_wd):6.2f}% ± {np.std(ser_wd):5.2f}% │")
-    print(f"  └──────────────────┴───────────────────────────────┴─────────────────────┘")
+    tgt = agg['total_gt_tokens']
+    print(f"\nSymbol Error Rates:")
+    print(f"  ┌──────────────────┬────────────────────────────────┬─────────────────────┐")
+    print(f"  │ Version          │ Aggregate                      │ Per {unit_label:<7s}         │")
+    print(f"  ├──────────────────┼────────────────────────────────┼─────────────────────┤")
+    print(f"  │ Chord SER        │  {agg['agg_ser_no_dots']:6.2f}%  ({agg['total_ed_no_dots']:4d} err / {tgc} chords) │ {np.mean(ser_nd):6.2f}% ± {np.std(ser_nd):5.2f}% │")
+    print(f"  │ Token SER (dots) │  {agg['agg_ser_with_dots']:6.2f}%  ({agg['total_ed_with_dots']:4d} err / {tgt} tokens) │ {np.mean(ser_wd):6.2f}% ± {np.std(ser_wd):5.2f}% │")
+    print(f"  └──────────────────┴────────────────────────────────┴─────────────────────┘")
     print(f"  Chords: {agg['total_pred_chords']} pred, {tgc} GT")
-    print(f"  Tokens (with dots): {agg['total_pred_tokens']} pred, {agg['total_gt_tokens']} GT")
+    print(f"  Tokens (with dots): {agg['total_pred_tokens']} pred, {tgt} GT")
 
     # --- ED breakdown (with dots) ---
     raw = agg.get('_raw_metrics', [])
