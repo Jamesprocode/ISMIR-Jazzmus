@@ -215,6 +215,33 @@ def extract_chords_from_mxhm(mxhm_content: str) -> List[str]:
     return chords
 
 
+def extract_tokens_from_mxhm(mxhm_content: str) -> List[str]:
+    """
+    Extract all tokens (chords + dots) from **mxhm spine content.
+
+    Unlike extract_chords_from_mxhm, this keeps dots (.) for use with
+    edit distance alignment where dots provide rhythmic context.
+
+    Filters out:
+    - Barlines (=)
+    - Spine terminators (*-)
+    - Empty lines
+
+    Args:
+        mxhm_content: Content from **mxhm spine
+
+    Returns:
+        List of token strings (chord symbols and dots)
+    """
+    tokens = []
+    for line in mxhm_content.split('\n'):
+        line = line.strip()
+        if not line or line.startswith('=') or line.startswith('*'):
+            continue
+        tokens.append(line)
+    return tokens
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 #  MIREX-STYLE DURATION-WEIGHTED METRICS  (adapted from audio chord eval)
 # ═══════════════════════════════════════════════════════════════════════════
@@ -1127,36 +1154,31 @@ def print_chord_metrics(metrics: Dict, verbose: bool = True):
 #  EDIT-DISTANCE BASED METRICS (page-level alignment)
 # ═══════════════════════════════════════════════════════════════════════════
 
-def _edit_distance_align(pred_chords: List[str], gt_chords: List[str]) -> Dict:
+def _edit_distance_align(pred_tokens: List[str], gt_tokens: List[str]) -> Dict:
     """
-    Align predicted and GT chord sequences using edit distance on root notes,
+    Align predicted and GT token sequences using edit distance,
     with backtracking to extract aligned pairs.
 
-    The edit distance gives the alignment quality (how well the model found
-    the right chords in the right order). On matched pairs (where roots agree),
-    we can then separately evaluate quality and extension accuracy.
+    Tokens can be chord symbols or dots (.). The edit distance compares
+    tokens directly — dots match dots, chords match chords.
 
     Args:
-        pred_chords: List of predicted chord strings
-        gt_chords: List of ground truth chord strings
+        pred_tokens: List of predicted tokens (chords and dots)
+        gt_tokens: List of ground truth tokens (chords and dots)
 
     Returns:
         Dict with:
           - 'edit_distance': raw edit distance
           - 'alignment_score': (1 - edit_dist / max(len_pred, len_gt)) * 100
           - 'aligned_pairs': list of (pred_idx, gt_idx) for match/substitution positions
-          - 'matches': count of root matches
-          - 'substitutions': count of root substitution errors
+          - 'matches': total matches (chord + dot)
+          - 'dot_matches': count of dot-to-dot matches
+          - 'chord_matches': count of chord-to-chord matches
+          - 'substitutions': count of substitution errors
           - 'insertions': count of extra predictions
-          - 'deletions': count of missed GT chords
+          - 'deletions': count of missed GT tokens
     """
-    pred_parsed = [parse_chord(c) for c in pred_chords]
-    gt_parsed = [parse_chord(c) for c in gt_chords]
-
-    pred_roots = [p.root if p.root else '?' for p in pred_parsed]
-    gt_roots = [g.root if g.root else '?' for g in gt_parsed]
-
-    m, n = len(pred_roots), len(gt_roots)
+    m, n = len(pred_tokens), len(gt_tokens)
 
     # Build DP table
     dp = [[0] * (n + 1) for _ in range(m + 1)]
@@ -1167,7 +1189,7 @@ def _edit_distance_align(pred_chords: List[str], gt_chords: List[str]) -> Dict:
 
     for i in range(1, m + 1):
         for j in range(1, n + 1):
-            if pred_roots[i - 1] == gt_roots[j - 1]:
+            if pred_tokens[i - 1] == gt_tokens[j - 1]:
                 dp[i][j] = dp[i - 1][j - 1]
             else:
                 dp[i][j] = 1 + min(
@@ -1182,12 +1204,18 @@ def _edit_distance_align(pred_chords: List[str], gt_chords: List[str]) -> Dict:
     deletions = 0
     substitutions = 0
     matches = 0
+    dot_matches = 0
+    chord_matches = 0
 
     i, j = m, n
     while i > 0 or j > 0:
-        if i > 0 and j > 0 and pred_roots[i - 1] == gt_roots[j - 1]:
+        if i > 0 and j > 0 and pred_tokens[i - 1] == gt_tokens[j - 1]:
             aligned_pairs.append((i - 1, j - 1))
             matches += 1
+            if pred_tokens[i - 1] == '.':
+                dot_matches += 1
+            else:
+                chord_matches += 1
             i -= 1
             j -= 1
         elif i > 0 and j > 0 and dp[i][j] == dp[i - 1][j - 1] + 1:
@@ -1215,6 +1243,8 @@ def _edit_distance_align(pred_chords: List[str], gt_chords: List[str]) -> Dict:
         'alignment_score': alignment_score,
         'aligned_pairs': aligned_pairs,
         'matches': matches,
+        'dot_matches': dot_matches,
+        'chord_matches': chord_matches,
         'substitutions': substitutions,
         'insertions': insertions,
         'deletions': deletions,
@@ -1223,32 +1253,27 @@ def _edit_distance_align(pred_chords: List[str], gt_chords: List[str]) -> Dict:
     }
 
 
-def compute_page_chord_metrics(pred_chords: List[str], gt_chords: List[str]) -> Dict:
+def compute_page_chord_metrics(pred_tokens: List[str], gt_tokens: List[str]) -> Dict:
     """
-    Compute page-level chord metrics using edit distance alignment.
+    Compute chord metrics using edit distance alignment on full token sequences
+    (chords + dots).
 
-    This runs edit distance on root notes to align the sequences, then
-    evaluates quality and extension accuracy on the matched pairs.
-
-    Metrics:
-      - Alignment score (from edit distance): root detection quality
-      - Quality accuracy (on matched roots): chord quality correctness
-      - Extension accuracy (on matched roots): chord extension correctness
+    Dots provide rhythmic context for better alignment. After alignment:
+      - dot_matches are counted separately (duration accuracy)
+      - chord_matches are used for quality/extension evaluation
+      - subs/ins/del capture both chord and duration errors
 
     Args:
-        pred_chords: All predicted chord strings for the page (concatenated across systems)
-        gt_chords: All GT chord strings for the page (concatenated across systems)
+        pred_tokens: Predicted tokens (chords and dots) from extract_tokens_from_mxhm
+        gt_tokens: GT tokens (chords and dots) from extract_tokens_from_mxhm
 
     Returns:
         Dict with alignment breakdown + quality/extension accuracy
     """
-    pred_parsed = [parse_chord(c) for c in pred_chords]
-    gt_parsed = [parse_chord(c) for c in gt_chords]
+    # Step 1: Edit distance alignment on raw tokens
+    alignment = _edit_distance_align(pred_tokens, gt_tokens)
 
-    # Step 1: Edit distance alignment on roots
-    alignment = _edit_distance_align(pred_chords, gt_chords)
-
-    # Step 2: On matched pairs (roots agree), evaluate quality and extension
+    # Step 2: On chord matches (non-dot), evaluate quality and extension
     quality_correct = 0
     extension_correct = 0
     full_correct = 0
@@ -1256,10 +1281,17 @@ def compute_page_chord_metrics(pred_chords: List[str], gt_chords: List[str]) -> 
     extension_errors = Counter()
 
     for pred_idx, gt_idx in alignment['aligned_pairs']:
-        pred_p = pred_parsed[pred_idx]
-        gt_p = gt_parsed[gt_idx]
+        pred_tok = pred_tokens[pred_idx]
+        gt_tok = gt_tokens[gt_idx]
 
-        # Only evaluate quality/extension where roots match
+        # Skip dot matches — only evaluate chord-to-chord matches
+        if pred_tok == '.' or gt_tok == '.':
+            continue
+
+        # Both are chords and they matched in edit distance (same string)
+        pred_p = parse_chord(pred_tok)
+        gt_p = parse_chord(gt_tok)
+
         if pred_p.root is not None and gt_p.root is not None and pred_p.root == gt_p.root:
             # Quality check
             pred_qual = pred_p.quality if pred_p.quality else "dom"
@@ -1281,30 +1313,32 @@ def compute_page_chord_metrics(pred_chords: List[str], gt_chords: List[str]) -> 
             if pred_qual == gt_qual and pred_ext == gt_ext:
                 full_correct += 1
 
-    total_matches = alignment['matches']
-    quality_acc = quality_correct / total_matches * 100 if total_matches > 0 else 0.0
-    extension_acc = extension_correct / total_matches * 100 if total_matches > 0 else 0.0
-    full_acc = full_correct / total_matches * 100 if total_matches > 0 else 0.0
+    chord_matches = alignment['chord_matches']
+    quality_acc = quality_correct / chord_matches * 100 if chord_matches > 0 else 0.0
+    extension_acc = extension_correct / chord_matches * 100 if chord_matches > 0 else 0.0
+    full_acc = full_correct / chord_matches * 100 if chord_matches > 0 else 0.0
 
     return {
-        # Edit distance alignment (root detection quality)
+        # Edit distance alignment (full token sequence)
         'edit_distance': alignment['edit_distance'],
         'alignment_score': alignment['alignment_score'],
         'matches': alignment['matches'],
+        'dot_matches': alignment['dot_matches'],
+        'chord_matches': alignment['chord_matches'],
         'substitutions': alignment['substitutions'],
         'insertions': alignment['insertions'],
         'deletions': alignment['deletions'],
         'pred_count': alignment['pred_count'],
         'gt_count': alignment['gt_count'],
-        # Quality accuracy (on matched roots)
+        # Quality accuracy (on chord matches only)
         'quality_correct': quality_correct,
         'quality_accuracy': quality_acc,
         'quality_errors': quality_errors.most_common(5),
-        # Extension accuracy (on matched roots)
+        # Extension accuracy (on chord matches only)
         'extension_correct': extension_correct,
         'extension_accuracy': extension_acc,
         'extension_errors': extension_errors.most_common(5),
-        # Full chord accuracy (on matched roots)
+        # Full chord accuracy (on chord matches only)
         'full_correct': full_correct,
         'full_accuracy': full_acc,
     }
@@ -1324,6 +1358,8 @@ def aggregate_page_chord_metrics(page_metrics_list: List[Dict]) -> Dict:
         return {}
 
     total_matches = sum(m['matches'] for m in page_metrics_list)
+    total_dot_matches = sum(m['dot_matches'] for m in page_metrics_list)
+    total_chord_matches = sum(m['chord_matches'] for m in page_metrics_list)
     total_subs = sum(m['substitutions'] for m in page_metrics_list)
     total_ins = sum(m['insertions'] for m in page_metrics_list)
     total_del = sum(m['deletions'] for m in page_metrics_list)
@@ -1335,23 +1371,25 @@ def aggregate_page_chord_metrics(page_metrics_list: List[Dict]) -> Dict:
     per_page_alignment = [m['alignment_score'] for m in page_metrics_list]
 
     total_qual_correct = sum(m['quality_correct'] for m in page_metrics_list)
-    qual_acc = total_qual_correct / total_matches * 100 if total_matches > 0 else 0
+    qual_acc = total_qual_correct / total_chord_matches * 100 if total_chord_matches > 0 else 0
 
     total_ext_correct = sum(m['extension_correct'] for m in page_metrics_list)
-    ext_acc = total_ext_correct / total_matches * 100 if total_matches > 0 else 0
+    ext_acc = total_ext_correct / total_chord_matches * 100 if total_chord_matches > 0 else 0
 
     total_full_correct = sum(m['full_correct'] for m in page_metrics_list)
-    full_acc = total_full_correct / total_matches * 100 if total_matches > 0 else 0
+    full_acc = total_full_correct / total_chord_matches * 100 if total_chord_matches > 0 else 0
 
     # Per-unit scores (for mean ± std per page or per system)
-    per_unit_quality = [m['quality_accuracy'] for m in page_metrics_list if m['matches'] > 0]
-    per_unit_extension = [m['extension_accuracy'] for m in page_metrics_list if m['matches'] > 0]
-    per_unit_full = [m['full_accuracy'] for m in page_metrics_list if m['matches'] > 0]
+    per_unit_quality = [m['quality_accuracy'] for m in page_metrics_list if m['chord_matches'] > 0]
+    per_unit_extension = [m['extension_accuracy'] for m in page_metrics_list if m['chord_matches'] > 0]
+    per_unit_full = [m['full_accuracy'] for m in page_metrics_list if m['chord_matches'] > 0]
 
     return {
         'n_units': len(page_metrics_list),
         '_raw_metrics': page_metrics_list,  # keep raw per-unit data for printing
         'total_matches': total_matches,
+        'total_dot_matches': total_dot_matches,
+        'total_chord_matches': total_chord_matches,
         'total_substitutions': total_subs,
         'total_insertions': total_ins,
         'total_deletions': total_del,
@@ -1390,49 +1428,54 @@ def print_page_chord_metrics(agg: Dict, unit_label: str = "page"):
     print(f"{'='*60}")
 
     # Collect per-unit counts for mean ± std
-    per_match = [m['matches'] for m in agg.get('_raw_metrics', [])] if '_raw_metrics' in agg else None
-    per_sub = [m['substitutions'] for m in agg.get('_raw_metrics', [])] if '_raw_metrics' in agg else None
-    per_ins = [m['insertions'] for m in agg.get('_raw_metrics', [])] if '_raw_metrics' in agg else None
-    per_del = [m['deletions'] for m in agg.get('_raw_metrics', [])] if '_raw_metrics' in agg else None
+    raw = agg.get('_raw_metrics', [])
+    has_raw = len(raw) > 0
 
-    print(f"\nRoot Alignment (edit distance on roots):")
+    print(f"\nToken Alignment (edit distance on chords + dots):")
     print(f"  ┌─────────────────┬────────┬─────────────────────┬────────────────────────────┐")
     print(f"  │ Operation       │ Total  │ Per {unit_label:<7s}         │ Description                │")
     print(f"  ├─────────────────┼────────┼─────────────────────┼────────────────────────────┤")
-    if per_match:
-        print(f"  │ Matches         │ {agg['total_matches']:6d} │ {np.mean(per_match):6.2f} ± {np.std(per_match):5.2f}   │ Correct root, aligned      │")
-        print(f"  │ Substitutions   │ {agg['total_substitutions']:6d} │ {np.mean(per_sub):6.2f} ± {np.std(per_sub):5.2f}   │ Wrong root predicted       │")
-        print(f"  │ Insertions      │ {agg['total_insertions']:6d} │ {np.mean(per_ins):6.2f} ± {np.std(per_ins):5.2f}   │ Extra predicted chords     │")
-        print(f"  │ Deletions       │ {agg['total_deletions']:6d} │ {np.mean(per_del):6.2f} ± {np.std(per_del):5.2f}   │ Missed GT chords           │")
+    if has_raw:
+        per_chord_m = [m['chord_matches'] for m in raw]
+        per_dot_m = [m['dot_matches'] for m in raw]
+        per_sub = [m['substitutions'] for m in raw]
+        per_ins = [m['insertions'] for m in raw]
+        per_del = [m['deletions'] for m in raw]
+        print(f"  │ Chord matches   │ {agg['total_chord_matches']:6d} │ {np.mean(per_chord_m):6.2f} ± {np.std(per_chord_m):5.2f}   │ Correct chord token        │")
+        print(f"  │ Dot matches     │ {agg['total_dot_matches']:6d} │ {np.mean(per_dot_m):6.2f} ± {np.std(per_dot_m):5.2f}   │ Correct duration           │")
+        print(f"  │ Substitutions   │ {agg['total_substitutions']:6d} │ {np.mean(per_sub):6.2f} ± {np.std(per_sub):5.2f}   │ Wrong token predicted      │")
+        print(f"  │ Insertions      │ {agg['total_insertions']:6d} │ {np.mean(per_ins):6.2f} ± {np.std(per_ins):5.2f}   │ Extra tokens in pred       │")
+        print(f"  │ Deletions       │ {agg['total_deletions']:6d} │ {np.mean(per_del):6.2f} ± {np.std(per_del):5.2f}   │ Missing tokens from GT     │")
     else:
-        print(f"  │ Matches         │ {agg['total_matches']:6d} │        —            │ Correct root, aligned      │")
-        print(f"  │ Substitutions   │ {agg['total_substitutions']:6d} │        —            │ Wrong root predicted       │")
-        print(f"  │ Insertions      │ {agg['total_insertions']:6d} │        —            │ Extra predicted chords     │")
-        print(f"  │ Deletions       │ {agg['total_deletions']:6d} │        —            │ Missed GT chords           │")
+        print(f"  │ Chord matches   │ {agg['total_chord_matches']:6d} │        —            │ Correct chord token        │")
+        print(f"  │ Dot matches     │ {agg['total_dot_matches']:6d} │        —            │ Correct duration           │")
+        print(f"  │ Substitutions   │ {agg['total_substitutions']:6d} │        —            │ Wrong token predicted      │")
+        print(f"  │ Insertions      │ {agg['total_insertions']:6d} │        —            │ Extra tokens in pred       │")
+        print(f"  │ Deletions       │ {agg['total_deletions']:6d} │        —            │ Missing tokens from GT     │")
     print(f"  └─────────────────┴────────┴─────────────────────┴────────────────────────────┘")
 
     scores = agg['per_unit_alignment_scores']
     print(f"  Alignment Score (aggregate): {agg['aggregate_alignment_score']:.2f}%")
     print(f"  Alignment Score (per {unit_label}): {np.mean(scores):.2f}% ± {np.std(scores):.2f}%")
-    print(f"  Counts: {agg['total_pred']} predicted, {agg['total_gt']} GT chords")
+    print(f"  Counts: {agg['total_pred']} predicted, {agg['total_gt']} GT tokens")
 
-    tm = agg['total_matches']
+    tcm = agg['total_chord_matches']
     qual_scores = agg['per_unit_quality_scores']
     ext_scores = agg['per_unit_extension_scores']
     full_scores = agg['per_unit_full_scores']
 
-    print(f"\nQuality Accuracy (on {tm} matched roots):")
-    print(f"  Aggregate: {agg['quality_accuracy']:.2f}% ({agg['quality_correct']}/{tm})")
+    print(f"\nQuality Accuracy (on {tcm} matched chords):")
+    print(f"  Aggregate: {agg['quality_accuracy']:.2f}% ({agg['quality_correct']}/{tcm})")
     if qual_scores:
         print(f"  Per {unit_label}: {np.mean(qual_scores):.2f}% ± {np.std(qual_scores):.2f}%")
 
-    print(f"\nExtension Accuracy (on {tm} matched roots):")
-    print(f"  Aggregate: {agg['extension_accuracy']:.2f}% ({agg['extension_correct']}/{tm})")
+    print(f"\nExtension Accuracy (on {tcm} matched chords):")
+    print(f"  Aggregate: {agg['extension_accuracy']:.2f}% ({agg['extension_correct']}/{tcm})")
     if ext_scores:
         print(f"  Per {unit_label}: {np.mean(ext_scores):.2f}% ± {np.std(ext_scores):.2f}%")
 
-    print(f"\nFull Chord Accuracy (root + quality + extension, on {tm} matched roots):")
-    print(f"  Aggregate: {agg['full_accuracy']:.2f}% ({agg['full_correct']}/{tm})")
+    print(f"\nFull Chord Accuracy (root + quality + extension, on {tcm} matched chords):")
+    print(f"  Aggregate: {agg['full_accuracy']:.2f}% ({agg['full_correct']}/{tcm})")
     if full_scores:
         print(f"  Per {unit_label}: {np.mean(full_scores):.2f}% ± {np.std(full_scores):.2f}%")
 

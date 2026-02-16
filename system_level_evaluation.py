@@ -20,6 +20,7 @@ from chord_metrics import (
     compute_all_chord_metrics,
     print_chord_metrics,
     extract_chords_from_mxhm,
+    extract_tokens_from_mxhm,
     compute_page_chord_metrics,
     aggregate_page_chord_metrics,
     print_page_chord_metrics,  # used for system-level ED aggregation
@@ -163,10 +164,10 @@ def evaluate_systems(
                 )
                 system_result['chord_metrics'] = chord_metrics
                 # Edit distance metrics for this system
-                pred_chords = extract_chords_from_mxhm(pred_spines['**mxhm'])
-                gt_chords = extract_chords_from_mxhm(gt_spines['**mxhm'])
-                if pred_chords and gt_chords:
-                    system_result['ed_chord_metrics'] = compute_page_chord_metrics(pred_chords, gt_chords)
+                pred_tokens = extract_tokens_from_mxhm(pred_spines['**mxhm'])
+                gt_tokens = extract_tokens_from_mxhm(gt_spines['**mxhm'])
+                if pred_tokens and gt_tokens:
+                    system_result['ed_chord_metrics'] = compute_page_chord_metrics(pred_tokens, gt_tokens)
         except Exception as e:
             system_result['chord_metrics_error'] = str(e)
 

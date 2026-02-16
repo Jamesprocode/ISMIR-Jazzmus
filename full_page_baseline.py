@@ -635,6 +635,7 @@ if __name__ == "__main__":
     from inference import extract_spines
     from chord_metrics import (
         extract_chords_from_mxhm,
+        extract_tokens_from_mxhm,
         compute_page_chord_metrics,
         aggregate_page_chord_metrics,
         print_page_chord_metrics,
@@ -701,16 +702,38 @@ if __name__ == "__main__":
                 'ground_truth': ground_truth,
             })
 
-            # Compute page-level edit distance chord metrics
+            # Compute edit distance chord metrics (both per-system and per-page)
             try:
+                # Per-system: split by linebreak, run ED per system
+                pred_systems = full_page_kern.split('!!linebreak:original')
+                gt_systems = ground_truth.split('!!linebreak:original')
+                n_systems = min(len(pred_systems), len(gt_systems))
+
+                system_chord_metrics = []
+                for sys_idx in range(n_systems):
+                    pred_spines = extract_spines(pred_systems[sys_idx])
+                    gt_spines = extract_spines(gt_systems[sys_idx])
+                    if '**mxhm' in pred_spines and '**mxhm' in gt_spines:
+                        pred_tokens = extract_tokens_from_mxhm(pred_spines['**mxhm'])
+                        gt_tokens = extract_tokens_from_mxhm(gt_spines['**mxhm'])
+                        if pred_tokens and gt_tokens:
+                            system_chord_metrics.append(
+                                compute_page_chord_metrics(pred_tokens, gt_tokens)
+                            )
+
+                if system_chord_metrics:
+                    page_agg = aggregate_page_chord_metrics(system_chord_metrics)
+                    per_sample_metrics[-1]['per_system_chord_metrics'] = page_agg
+
+                # Per-page: run ED on entire page token sequence
                 pred_spines = extract_spines(full_page_kern)
                 gt_spines = extract_spines(ground_truth)
                 if '**mxhm' in pred_spines and '**mxhm' in gt_spines:
-                    pred_chords = extract_chords_from_mxhm(pred_spines['**mxhm'])
-                    gt_chords = extract_chords_from_mxhm(gt_spines['**mxhm'])
-                    if pred_chords and gt_chords:
-                        page_chord = compute_page_chord_metrics(pred_chords, gt_chords)
-                        per_sample_metrics[-1]['page_chord_metrics'] = page_chord
+                    pred_tokens = extract_tokens_from_mxhm(pred_spines['**mxhm'])
+                    gt_tokens = extract_tokens_from_mxhm(gt_spines['**mxhm'])
+                    if pred_tokens and gt_tokens:
+                        per_sample_metrics[-1]['per_page_chord_metrics'] = \
+                            compute_page_chord_metrics(pred_tokens, gt_tokens)
             except Exception:
                 pass
 
@@ -749,38 +772,53 @@ if __name__ == "__main__":
     print(f"LER: {ler_mean:.2f}% (±{ler_std:.2f}%)")
     print(f"{'='*60}\n")
 
-    # Page-level edit distance chord metrics
-    page_chord_results = [m['page_chord_metrics'] for m in per_sample_metrics if 'page_chord_metrics' in m]
-    if page_chord_results:
-        agg_page = aggregate_page_chord_metrics(page_chord_results)
-        print_page_chord_metrics(agg_page)
+    # Per-system edit distance chord metrics (aggregate all per-system results across pages)
+    all_system_chord_metrics = []
+    for m in per_sample_metrics:
+        if 'per_system_chord_metrics' in m:
+            all_system_chord_metrics.extend(m['per_system_chord_metrics']['_raw_metrics'])
+    if all_system_chord_metrics:
+        agg_per_system = aggregate_page_chord_metrics(all_system_chord_metrics)
+        print_page_chord_metrics(agg_per_system, unit_label="system")
 
-    # Show the 10 worst and 10 best chord recognition pages
-    pages_with_chord = [m for m in per_sample_metrics if 'page_chord_metrics' in m]
+    # Per-page edit distance chord metrics
+    page_level_results = [m['per_page_chord_metrics'] for m in per_sample_metrics if 'per_page_chord_metrics' in m]
+    if page_level_results:
+        agg_per_page = aggregate_page_chord_metrics(page_level_results)
+        print_page_chord_metrics(agg_per_page, unit_label="page")
+
+    # Show the 10 worst and 10 best chord recognition pages (using per-system metrics)
+    pages_with_chord = [m for m in per_sample_metrics if 'per_system_chord_metrics' in m]
     if pages_with_chord:
-        pages_with_chord.sort(key=lambda x: x['page_chord_metrics']['alignment_score'])
+        pages_with_chord.sort(key=lambda x: x['per_system_chord_metrics']['aggregate_alignment_score'])
 
         for label, samples in [("10 WORST", pages_with_chord[:10]),
                                ("10 BEST", pages_with_chord[-10:][::-1])]:
             print(f"\n{'='*60}")
-            print(f"{label} CHORD RECOGNITION PAGES")
+            print(f"{label} CHORD RECOGNITION PAGES (per-system ED)")
             print(f"{'='*60}")
             for i, m in enumerate(samples):
-                cm = m['page_chord_metrics']
+                cm = m['per_system_chord_metrics']
                 img_name = Path(m['image']).stem
-                print(f"\n  {i+1}. {img_name}")
-                print(f"     Alignment score: {cm['alignment_score']:.1f}%  (ED={cm['edit_distance']}, pred={cm['pred_count']}, gt={cm['gt_count']})")
-                print(f"     Matches={cm['matches']}, Subs={cm['substitutions']}, Ins={cm['insertions']}, Del={cm['deletions']}")
-                if cm['matches'] > 0:
+                print(f"\n  {i+1}. {img_name}  ({cm['n_units']} systems)")
+                print(f"     Alignment score: {cm['aggregate_alignment_score']:.1f}%  (pred={cm['total_pred']}, gt={cm['total_gt']})")
+                print(f"     Chord matches={cm['total_chord_matches']}, Dot matches={cm['total_dot_matches']}, Subs={cm['total_substitutions']}, Ins={cm['total_insertions']}, Del={cm['total_deletions']}")
+                if cm['total_chord_matches'] > 0:
                     print(f"     Quality acc: {cm['quality_accuracy']:.1f}%  Extension acc: {cm['extension_accuracy']:.1f}%  Full acc: {cm['full_accuracy']:.1f}%")
                 else:
-                    print(f"     No matched roots to evaluate quality/extension")
-                # Show pred vs gt chords for comparison
-                pred_spines = extract_spines(m['prediction'])
-                gt_spines = extract_spines(m['ground_truth'])
-                pred_ch = extract_chords_from_mxhm(pred_spines.get('**mxhm', []))
-                gt_ch = extract_chords_from_mxhm(gt_spines.get('**mxhm', []))
-                print(f"     Pred chords: {pred_ch}")
-                print(f"     GT   chords: {gt_ch}")
+                    print(f"     No matched chords to evaluate quality/extension")
+                # Show pred vs gt chords per system for comparison
+                pred_systems = m['prediction'].split('!!linebreak:original')
+                gt_systems = m['ground_truth'].split('!!linebreak:original')
+                n_sys = min(len(pred_systems), len(gt_systems))
+                for s in range(n_sys):
+                    pred_sp = extract_spines(pred_systems[s])
+                    gt_sp = extract_spines(gt_systems[s])
+                    pred_ch = extract_chords_from_mxhm(pred_sp.get('**mxhm', []))
+                    gt_ch = extract_chords_from_mxhm(gt_sp.get('**mxhm', []))
+                    if pred_ch or gt_ch:
+                        print(f"     System {s+1}:")
+                        print(f"       Pred: {pred_ch}")
+                        print(f"       GT:   {gt_ch}")
             print(f"{'='*60}\n")
 
