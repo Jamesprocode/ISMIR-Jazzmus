@@ -644,7 +644,7 @@ if __name__ == "__main__":
     checkpint_path = "/home/hice1/jwang3180/jazzmus/ISMIR-Jazzmus/weights/smt_sys_best/smt_pre_syn_medium.ckpt"
     device = "cuda" if torch.cuda.is_available() else "cpu"
     yolo_model_path = "/home/hice1/jwang3180/jazzmus/ISMIR-Jazzmus/yolo_weigths/yolov11s_20241108.pt"
-    test_split_file = "/home/hice1/jwang3180/jazzmus/ISMIR-Jazzmus/data/jazzmus_fullpage/splits/test_0.txt"
+    test_split_file = "/home/hice1/jwang3180/jazzmus/ISMIR-Jazzmus/data/jazzmus_fullpage/splits/val_1.txt"
 
     # Load test split
     with open(test_split_file, 'r') as f:
@@ -656,6 +656,19 @@ if __name__ == "__main__":
     print("Loading model...")
     inference_model = FullPageInference(checkpint_path, device=device)
     print("✓ Model loaded\n")
+
+    # Helper: extract mxhm tokens from a kern chunk (second tab column)
+    def _extract_mxhm_tokens(kern_chunk):
+        tokens = []
+        for line in kern_chunk.strip().split('\n'):
+            parts = line.split('\t')
+            if len(parts) < 2:
+                continue
+            tok = parts[1].strip()
+            if not tok or tok.startswith('**') or tok.startswith('*') or tok.startswith('='):
+                continue
+            tokens.append(tok)
+        return tokens
 
     # Collect all predictions and ground truths
     all_predictions = []
@@ -704,41 +717,25 @@ if __name__ == "__main__":
 
             # Compute edit distance chord metrics (both per-system and per-page)
             try:
-                # Per-system: split by linebreak, run ED per system
+                # Per-system: split by linebreak, extract mxhm per system
                 pred_systems = full_page_kern.split('!!linebreak:original')
                 gt_systems = ground_truth.split('!!linebreak:original')
                 n_systems = min(len(pred_systems), len(gt_systems))
 
                 system_chord_metrics = []
-                # Debug: print first page spine info to check dots
-                if len(per_sample_metrics) == 1:  # first page (already appended)
-                    for si in range(min(n_systems, 2)):
-                        ps = extract_spines(pred_systems[si])
-                        gs = extract_spines(gt_systems[si])
-                        print(f"  [DEBUG] System {si}: pred spines={list(ps.keys())}, gt spines={list(gs.keys())}")
-                        if '**mxhm' in ps:
-                            toks = extract_tokens_from_mxhm(ps['**mxhm'])
-                            print(f"    pred tokens ({len(toks)}): {toks[:15]}")
-                        if '**mxhm' in gs:
-                            toks = extract_tokens_from_mxhm(gs['**mxhm'])
-                            print(f"    gt tokens ({len(toks)}): {toks[:15]}")
-
                 for sys_idx in range(n_systems):
-                    pred_spines = extract_spines(pred_systems[sys_idx])
-                    gt_spines = extract_spines(gt_systems[sys_idx])
-                    if '**mxhm' in pred_spines and '**mxhm' in gt_spines:
-                        pred_tokens = extract_tokens_from_mxhm(pred_spines['**mxhm'])
-                        gt_tokens = extract_tokens_from_mxhm(gt_spines['**mxhm'])
-                        if pred_tokens and gt_tokens:
-                            system_chord_metrics.append(
-                                compute_page_chord_metrics(pred_tokens, gt_tokens)
-                            )
+                    pred_tokens = _extract_mxhm_tokens(pred_systems[sys_idx])
+                    gt_tokens = _extract_mxhm_tokens(gt_systems[sys_idx])
+                    if pred_tokens and gt_tokens:
+                        system_chord_metrics.append(
+                            compute_page_chord_metrics(pred_tokens, gt_tokens)
+                        )
 
                 if system_chord_metrics:
                     page_agg = aggregate_page_chord_metrics(system_chord_metrics)
                     per_sample_metrics[-1]['per_system_chord_metrics'] = page_agg
 
-                # Per-page: run ED on entire page token sequence
+                # Per-page: extract mxhm from entire page
                 pred_spines = extract_spines(full_page_kern)
                 gt_spines = extract_spines(ground_truth)
                 if '**mxhm' in pred_spines and '**mxhm' in gt_spines:
@@ -821,14 +818,12 @@ if __name__ == "__main__":
                 else:
                     print(f"     No matched chord roots to evaluate quality/extension")
                 # Show pred vs gt tokens per system for comparison (including dots)
-                pred_systems = m['prediction'].split('!!linebreak:original')
-                gt_systems = m['ground_truth'].split('!!linebreak:original')
-                n_sys = min(len(pred_systems), len(gt_systems))
+                pred_sys_chunks = m['prediction'].split('!!linebreak:original')
+                gt_sys_chunks = m['ground_truth'].split('!!linebreak:original')
+                n_sys = min(len(pred_sys_chunks), len(gt_sys_chunks))
                 for s in range(n_sys):
-                    pred_sp = extract_spines(pred_systems[s])
-                    gt_sp = extract_spines(gt_systems[s])
-                    pred_toks = extract_tokens_from_mxhm(pred_sp.get('**mxhm', []))
-                    gt_toks = extract_tokens_from_mxhm(gt_sp.get('**mxhm', []))
+                    pred_toks = _extract_mxhm_tokens(pred_sys_chunks[s])
+                    gt_toks = _extract_mxhm_tokens(gt_sys_chunks[s])
                     if pred_toks or gt_toks:
                         print(f"     System {s+1}:")
                         print(f"       Pred: {pred_toks}")
