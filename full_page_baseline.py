@@ -800,13 +800,13 @@ if __name__ == "__main__":
         agg_per_page = aggregate_page_chord_metrics(page_level_results)
         print_page_chord_metrics(agg_per_page, unit_label="page")
 
-    # Show the 10 worst and 10 best chord recognition pages (using per-system metrics)
+    # Show the 5 worst and 5 best chord recognition pages (using per-system metrics)
     pages_with_chord = [m for m in per_sample_metrics if 'per_system_chord_metrics' in m]
     if pages_with_chord:
         pages_with_chord.sort(key=lambda x: x['per_system_chord_metrics']['aggregate_alignment_score'])
 
-        for label, samples in [("10 WORST", pages_with_chord[:10]),
-                               ("10 BEST", pages_with_chord[-10:][::-1])]:
+        for label, samples in [("5 WORST", pages_with_chord[:5]),
+                               ("5 BEST", pages_with_chord[-5:][::-1])]:
             print(f"\n{'='*60}")
             print(f"{label} CHORD RECOGNITION PAGES (per-system ED)")
             print(f"{'='*60}")
@@ -820,18 +820,18 @@ if __name__ == "__main__":
                     print(f"     Quality acc: {cm['quality_accuracy']:.1f}%  Extension acc: {cm['extension_accuracy']:.1f}%  Full acc: {cm['full_accuracy']:.1f}%")
                 else:
                     print(f"     No matched chords to evaluate quality/extension")
-                # Show pred vs gt chords per system for comparison
+                # Show pred vs gt tokens per system for comparison (including dots)
                 pred_systems = m['prediction'].split('!!linebreak:original')
                 gt_systems = m['ground_truth'].split('!!linebreak:original')
                 n_sys = min(len(pred_systems), len(gt_systems))
                 for s in range(n_sys):
                     pred_sp = extract_spines(pred_systems[s])
                     gt_sp = extract_spines(gt_systems[s])
-                    pred_ch = extract_chords_from_mxhm(pred_sp.get('**mxhm', []))
-                    gt_ch = extract_chords_from_mxhm(gt_sp.get('**mxhm', []))
-                    if pred_ch or gt_ch:
+                    pred_toks = extract_tokens_from_mxhm(pred_sp.get('**mxhm', []))
+                    gt_toks = extract_tokens_from_mxhm(gt_sp.get('**mxhm', []))
+                    if pred_toks or gt_toks:
                         print(f"     System {s+1}:")
-                        print(f"       Pred: {pred_ch}")
-                        print(f"       GT:   {gt_ch}")
+                        print(f"       Pred: {pred_toks}")
+                        print(f"       GT:   {gt_toks}")
             print(f"{'='*60}\n")
 
