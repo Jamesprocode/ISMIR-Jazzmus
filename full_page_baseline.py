@@ -644,7 +644,7 @@ if __name__ == "__main__":
     checkpint_path = "/home/hice1/jwang3180/jazzmus/ISMIR-Jazzmus/weights/smt_sys_best/smt_pre_syn_medium.ckpt"
     device = "cuda" if torch.cuda.is_available() else "cpu"
     yolo_model_path = "/home/hice1/jwang3180/jazzmus/ISMIR-Jazzmus/yolo_weigths/yolov11s_20241108.pt"
-    test_split_file = "/home/hice1/jwang3180/jazzmus/ISMIR-Jazzmus/data/jazzmus_fullpage/splits/val_1.txt"
+    test_split_file = "/home/hice1/jwang3180/jazzmus/ISMIR-Jazzmus/data/jazzmus_fullpage/splits/val_0.txt"
 
     # Load test split
     with open(test_split_file, 'r') as f:
@@ -800,7 +800,13 @@ if __name__ == "__main__":
     # Show the 5 worst and 5 best chord recognition pages (using per-system metrics)
     pages_with_chord = [m for m in per_sample_metrics if 'per_system_chord_metrics' in m]
     if pages_with_chord:
-        pages_with_chord.sort(key=lambda x: x['per_system_chord_metrics']['aggregate_alignment_score'])
+        # Sort by total errors (ins + del + sub) — worst has most errors
+        pages_with_chord.sort(
+            key=lambda x: x['per_system_chord_metrics']['total_substitutions']
+                        + x['per_system_chord_metrics']['total_insertions']
+                        + x['per_system_chord_metrics']['total_deletions'],
+            reverse=True
+        )
 
         for label, samples in [("5 WORST", pages_with_chord[:5]),
                                ("5 BEST", pages_with_chord[-5:][::-1])]:
@@ -810,13 +816,14 @@ if __name__ == "__main__":
             for i, m in enumerate(samples):
                 cm = m['per_system_chord_metrics']
                 img_name = Path(m['image']).stem
+                total_errors = cm['total_substitutions'] + cm['total_insertions'] + cm['total_deletions']
+                # Sum edit distances across systems
+                total_ed = sum(r['edit_distance'] for r in cm['_raw_metrics'])
                 print(f"\n  {i+1}. {img_name}  ({cm['n_units']} systems)")
-                print(f"     Alignment score: {cm['aggregate_alignment_score']:.1f}%  (pred={cm['total_pred']}, gt={cm['total_gt']})")
-                print(f"     Chord matches={cm['total_chord_matches']}, Dot matches={cm['total_dot_matches']}, Subs={cm['total_substitutions']}, Ins={cm['total_insertions']}, Del={cm['total_deletions']}")
+                print(f"     Edit distance: {total_ed}  Total errors: {total_errors}  (Subs={cm['total_substitutions']}, Ins={cm['total_insertions']}, Del={cm['total_deletions']})")
+                print(f"     Chord matches={cm['total_chord_matches']}, Dot matches={cm['total_dot_matches']}")
                 if cm['total_chord_root_matches'] > 0:
                     print(f"     Root matches={cm['total_chord_root_matches']}  Quality acc: {cm['quality_accuracy']:.1f}%  Extension acc: {cm['extension_accuracy']:.1f}%  Full acc: {cm['full_accuracy']:.1f}%")
-                else:
-                    print(f"     No matched chord roots to evaluate quality/extension")
                 # Show pred vs gt tokens per system for comparison (including dots)
                 pred_sys_chunks = m['prediction'].split('!!linebreak:original')
                 gt_sys_chunks = m['ground_truth'].split('!!linebreak:original')

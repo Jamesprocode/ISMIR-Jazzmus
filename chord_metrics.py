@@ -1235,8 +1235,9 @@ def _edit_distance_align(pred_tokens: List[str], gt_tokens: List[str]) -> Dict:
     aligned_pairs.reverse()
 
     edit_dist = dp[m][n]
-    max_len = max(m, n, 1)
-    alignment_score = (1.0 - edit_dist / max_len) * 100
+    # Alignment score excludes dot matches (chord-level accuracy)
+    chord_ops = chord_matches + substitutions + insertions + deletions
+    alignment_score = (chord_matches / chord_ops * 100) if chord_ops > 0 else 0.0
 
     return {
         'edit_distance': edit_dist,
@@ -1368,9 +1369,9 @@ def aggregate_page_chord_metrics(page_metrics_list: List[Dict]) -> Dict:
     total_del = sum(m['deletions'] for m in page_metrics_list)
     total_pred = sum(m['pred_count'] for m in page_metrics_list)
     total_gt = sum(m['gt_count'] for m in page_metrics_list)
-    total_ops = total_matches + total_subs + total_ins + total_del
-
-    agg_alignment = (total_matches / total_ops * 100) if total_ops > 0 else 0
+    # Alignment score excludes dot matches
+    chord_ops = total_chord_matches + total_subs + total_ins + total_del
+    agg_alignment = (total_chord_matches / chord_ops * 100) if chord_ops > 0 else 0
     per_page_alignment = [m['alignment_score'] for m in page_metrics_list]
 
     total_chord_root_matches = sum(m['chord_root_matches'] for m in page_metrics_list)
