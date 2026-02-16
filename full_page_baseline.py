@@ -710,6 +710,19 @@ if __name__ == "__main__":
                 n_systems = min(len(pred_systems), len(gt_systems))
 
                 system_chord_metrics = []
+                # Debug: print first page spine info to check dots
+                if len(per_sample_metrics) == 0:
+                    for si in range(min(n_systems, 2)):
+                        ps = extract_spines(pred_systems[si])
+                        gs = extract_spines(gt_systems[si])
+                        print(f"  [DEBUG] System {si}: pred spines={list(ps.keys())}, gt spines={list(gs.keys())}")
+                        if '**mxhm' in ps:
+                            toks = extract_tokens_from_mxhm(ps['**mxhm'])
+                            print(f"    pred tokens ({len(toks)}): {toks[:15]}")
+                        if '**mxhm' in gs:
+                            toks = extract_tokens_from_mxhm(gs['**mxhm'])
+                            print(f"    gt tokens ({len(toks)}): {toks[:15]}")
+
                 for sys_idx in range(n_systems):
                     pred_spines = extract_spines(pred_systems[sys_idx])
                     gt_spines = extract_spines(gt_systems[sys_idx])
