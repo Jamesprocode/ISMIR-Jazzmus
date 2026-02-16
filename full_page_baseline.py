@@ -711,7 +711,7 @@ if __name__ == "__main__":
 
                 system_chord_metrics = []
                 # Debug: print first page spine info to check dots
-                if len(per_sample_metrics) == 0:
+                if len(per_sample_metrics) == 1:  # first page (already appended)
                     for si in range(min(n_systems, 2)):
                         ps = extract_spines(pred_systems[si])
                         gs = extract_spines(gt_systems[si])
@@ -816,10 +816,10 @@ if __name__ == "__main__":
                 print(f"\n  {i+1}. {img_name}  ({cm['n_units']} systems)")
                 print(f"     Alignment score: {cm['aggregate_alignment_score']:.1f}%  (pred={cm['total_pred']}, gt={cm['total_gt']})")
                 print(f"     Chord matches={cm['total_chord_matches']}, Dot matches={cm['total_dot_matches']}, Subs={cm['total_substitutions']}, Ins={cm['total_insertions']}, Del={cm['total_deletions']}")
-                if cm['total_chord_matches'] > 0:
-                    print(f"     Quality acc: {cm['quality_accuracy']:.1f}%  Extension acc: {cm['extension_accuracy']:.1f}%  Full acc: {cm['full_accuracy']:.1f}%")
+                if cm['total_chord_root_matches'] > 0:
+                    print(f"     Root matches={cm['total_chord_root_matches']}  Quality acc: {cm['quality_accuracy']:.1f}%  Extension acc: {cm['extension_accuracy']:.1f}%  Full acc: {cm['full_accuracy']:.1f}%")
                 else:
-                    print(f"     No matched chords to evaluate quality/extension")
+                    print(f"     No matched chord roots to evaluate quality/extension")
                 # Show pred vs gt tokens per system for comparison (including dots)
                 pred_systems = m['prediction'].split('!!linebreak:original')
                 gt_systems = m['ground_truth'].split('!!linebreak:original')

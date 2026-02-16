@@ -1273,10 +1273,13 @@ def compute_page_chord_metrics(pred_tokens: List[str], gt_tokens: List[str]) -> 
     # Step 1: Edit distance alignment on raw tokens
     alignment = _edit_distance_align(pred_tokens, gt_tokens)
 
-    # Step 2: On chord matches (non-dot), evaluate quality and extension
+    # Step 2: On aligned chord pairs where roots match, evaluate quality and extension
+    # aligned_pairs includes both matches and substitutions
+    # We evaluate quality/extension on all non-dot pairs where roots agree
     quality_correct = 0
     extension_correct = 0
     full_correct = 0
+    chord_root_matches = 0  # denominator: aligned pairs with matching roots (excl dots)
     quality_errors = Counter()
     extension_errors = Counter()
 
@@ -1284,15 +1287,17 @@ def compute_page_chord_metrics(pred_tokens: List[str], gt_tokens: List[str]) -> 
         pred_tok = pred_tokens[pred_idx]
         gt_tok = gt_tokens[gt_idx]
 
-        # Skip dot matches — only evaluate chord-to-chord matches
+        # Skip if either is a dot
         if pred_tok == '.' or gt_tok == '.':
             continue
 
-        # Both are chords and they matched in edit distance (same string)
+        # Both are chords — check if roots match
         pred_p = parse_chord(pred_tok)
         gt_p = parse_chord(gt_tok)
 
         if pred_p.root is not None and gt_p.root is not None and pred_p.root == gt_p.root:
+            chord_root_matches += 1
+
             # Quality check
             pred_qual = pred_p.quality if pred_p.quality else "dom"
             gt_qual = gt_p.quality if gt_p.quality else "dom"
@@ -1313,10 +1318,9 @@ def compute_page_chord_metrics(pred_tokens: List[str], gt_tokens: List[str]) -> 
             if pred_qual == gt_qual and pred_ext == gt_ext:
                 full_correct += 1
 
-    chord_matches = alignment['chord_matches']
-    quality_acc = quality_correct / chord_matches * 100 if chord_matches > 0 else 0.0
-    extension_acc = extension_correct / chord_matches * 100 if chord_matches > 0 else 0.0
-    full_acc = full_correct / chord_matches * 100 if chord_matches > 0 else 0.0
+    quality_acc = quality_correct / chord_root_matches * 100 if chord_root_matches > 0 else 0.0
+    extension_acc = extension_correct / chord_root_matches * 100 if chord_root_matches > 0 else 0.0
+    full_acc = full_correct / chord_root_matches * 100 if chord_root_matches > 0 else 0.0
 
     return {
         # Edit distance alignment (full token sequence)
@@ -1330,15 +1334,14 @@ def compute_page_chord_metrics(pred_tokens: List[str], gt_tokens: List[str]) -> 
         'deletions': alignment['deletions'],
         'pred_count': alignment['pred_count'],
         'gt_count': alignment['gt_count'],
-        # Quality accuracy (on chord matches only)
+        # Quality/extension accuracy (on aligned chord pairs with matching roots)
+        'chord_root_matches': chord_root_matches,
         'quality_correct': quality_correct,
         'quality_accuracy': quality_acc,
         'quality_errors': quality_errors.most_common(5),
-        # Extension accuracy (on chord matches only)
         'extension_correct': extension_correct,
         'extension_accuracy': extension_acc,
         'extension_errors': extension_errors.most_common(5),
-        # Full chord accuracy (on chord matches only)
         'full_correct': full_correct,
         'full_accuracy': full_acc,
     }
@@ -1370,19 +1373,21 @@ def aggregate_page_chord_metrics(page_metrics_list: List[Dict]) -> Dict:
     agg_alignment = (total_matches / total_ops * 100) if total_ops > 0 else 0
     per_page_alignment = [m['alignment_score'] for m in page_metrics_list]
 
+    total_chord_root_matches = sum(m['chord_root_matches'] for m in page_metrics_list)
+
     total_qual_correct = sum(m['quality_correct'] for m in page_metrics_list)
-    qual_acc = total_qual_correct / total_chord_matches * 100 if total_chord_matches > 0 else 0
+    qual_acc = total_qual_correct / total_chord_root_matches * 100 if total_chord_root_matches > 0 else 0
 
     total_ext_correct = sum(m['extension_correct'] for m in page_metrics_list)
-    ext_acc = total_ext_correct / total_chord_matches * 100 if total_chord_matches > 0 else 0
+    ext_acc = total_ext_correct / total_chord_root_matches * 100 if total_chord_root_matches > 0 else 0
 
     total_full_correct = sum(m['full_correct'] for m in page_metrics_list)
-    full_acc = total_full_correct / total_chord_matches * 100 if total_chord_matches > 0 else 0
+    full_acc = total_full_correct / total_chord_root_matches * 100 if total_chord_root_matches > 0 else 0
 
     # Per-unit scores (for mean ± std per page or per system)
-    per_unit_quality = [m['quality_accuracy'] for m in page_metrics_list if m['chord_matches'] > 0]
-    per_unit_extension = [m['extension_accuracy'] for m in page_metrics_list if m['chord_matches'] > 0]
-    per_unit_full = [m['full_accuracy'] for m in page_metrics_list if m['chord_matches'] > 0]
+    per_unit_quality = [m['quality_accuracy'] for m in page_metrics_list if m['chord_root_matches'] > 0]
+    per_unit_extension = [m['extension_accuracy'] for m in page_metrics_list if m['chord_root_matches'] > 0]
+    per_unit_full = [m['full_accuracy'] for m in page_metrics_list if m['chord_root_matches'] > 0]
 
     return {
         'n_units': len(page_metrics_list),
@@ -1390,6 +1395,7 @@ def aggregate_page_chord_metrics(page_metrics_list: List[Dict]) -> Dict:
         'total_matches': total_matches,
         'total_dot_matches': total_dot_matches,
         'total_chord_matches': total_chord_matches,
+        'total_chord_root_matches': total_chord_root_matches,
         'total_substitutions': total_subs,
         'total_insertions': total_ins,
         'total_deletions': total_del,
@@ -1459,23 +1465,23 @@ def print_page_chord_metrics(agg: Dict, unit_label: str = "page"):
     print(f"  Alignment Score (per {unit_label}): {np.mean(scores):.2f}% ± {np.std(scores):.2f}%")
     print(f"  Counts: {agg['total_pred']} predicted, {agg['total_gt']} GT tokens")
 
-    tcm = agg['total_chord_matches']
+    tcrm = agg['total_chord_root_matches']
     qual_scores = agg['per_unit_quality_scores']
     ext_scores = agg['per_unit_extension_scores']
     full_scores = agg['per_unit_full_scores']
 
-    print(f"\nQuality Accuracy (on {tcm} matched chords):")
-    print(f"  Aggregate: {agg['quality_accuracy']:.2f}% ({agg['quality_correct']}/{tcm})")
+    print(f"\nQuality Accuracy (on {tcrm} chord pairs with matching roots):")
+    print(f"  Aggregate: {agg['quality_accuracy']:.2f}% ({agg['quality_correct']}/{tcrm})")
     if qual_scores:
         print(f"  Per {unit_label}: {np.mean(qual_scores):.2f}% ± {np.std(qual_scores):.2f}%")
 
-    print(f"\nExtension Accuracy (on {tcm} matched chords):")
-    print(f"  Aggregate: {agg['extension_accuracy']:.2f}% ({agg['extension_correct']}/{tcm})")
+    print(f"\nExtension Accuracy (on {tcrm} chord pairs with matching roots):")
+    print(f"  Aggregate: {agg['extension_accuracy']:.2f}% ({agg['extension_correct']}/{tcrm})")
     if ext_scores:
         print(f"  Per {unit_label}: {np.mean(ext_scores):.2f}% ± {np.std(ext_scores):.2f}%")
 
-    print(f"\nFull Chord Accuracy (root + quality + extension, on {tcm} matched chords):")
-    print(f"  Aggregate: {agg['full_accuracy']:.2f}% ({agg['full_correct']}/{tcm})")
+    print(f"\nFull Chord Accuracy (root + quality + extension, on {tcrm} chord pairs with matching roots):")
+    print(f"  Aggregate: {agg['full_accuracy']:.2f}% ({agg['full_correct']}/{tcrm})")
     if full_scores:
         print(f"  Per {unit_label}: {np.mean(full_scores):.2f}% ± {np.std(full_scores):.2f}%")
 
