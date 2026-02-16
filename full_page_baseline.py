@@ -641,7 +641,7 @@ if __name__ == "__main__":
     checkpint_path = "/home/hice1/jwang3180/jazzmus/ISMIR-Jazzmus/weights/smt_sys_best/smt_pre_syn_medium.ckpt"
     device = "cuda" if torch.cuda.is_available() else "cpu"
     yolo_model_path = "/home/hice1/jwang3180/jazzmus/ISMIR-Jazzmus/yolo_weigths/yolov11s_20241108.pt"
-    test_split_file = "/home/hice1/jwang3180/jazzmus/ISMIR-Jazzmus/data/jazzmus_fullpage/splits/val_0.txt"
+    test_split_file = "/home/hice1/jwang3180/jazzmus/ISMIR-Jazzmus/data/jazzmus_fullpage/splits/test_0.txt"
 
     # Load test split
     with open(test_split_file, 'r') as f:
@@ -694,7 +694,9 @@ if __name__ == "__main__":
                 'cer': sample_cer,
                 'ser': sample_ser,
                 'ler': sample_ler,
-                'image': img_path
+                'image': img_path,
+                'prediction': full_page_kern,
+                'ground_truth': ground_truth,
             })
 
             # Compute page-level edit distance chord metrics
@@ -769,6 +771,12 @@ if __name__ == "__main__":
                 print(f"     Quality acc: {cm['quality_accuracy']:.1f}%  Extension acc: {cm['extension_accuracy']:.1f}%  Full acc: {cm['full_accuracy']:.1f}%")
             else:
                 print(f"     No matched roots to evaluate quality/extension")
-            print(f"     Pred chords: {cm['aligned_pairs'][:10]}{'...' if len(cm['aligned_pairs']) > 10 else ''}")
+            # Show pred vs gt chords for comparison
+            pred_spines = extract_spines(m['prediction'])
+            gt_spines = extract_spines(m['ground_truth'])
+            pred_ch = extract_chords_from_mxhm(pred_spines.get('**mxhm', []))
+            gt_ch = extract_chords_from_mxhm(gt_spines.get('**mxhm', []))
+            print(f"     Pred chords: {pred_ch}")
+            print(f"     GT   chords: {gt_ch}")
         print(f"{'='*60}\n")
 
