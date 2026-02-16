@@ -627,6 +627,7 @@ def concatenate_systems(system_kerns: List[str]) -> str:
 
 
 if __name__ == "__main__":
+    from pathlib import Path
     from tqdm import tqdm
     from jazzmus.dataset.eval_functions import compute_poliphony_metrics
     from inference import extract_spines
@@ -749,4 +750,25 @@ if __name__ == "__main__":
     if page_chord_results:
         agg_page = aggregate_page_chord_metrics(page_chord_results)
         print_page_chord_metrics(agg_page)
+
+    # Show the 5 worst chord recognition pages
+    pages_with_chord = [m for m in per_sample_metrics if 'page_chord_metrics' in m]
+    if pages_with_chord:
+        pages_with_chord.sort(key=lambda x: x['page_chord_metrics']['alignment_score'])
+        worst_5 = pages_with_chord[:5]
+        print(f"\n{'='*60}")
+        print("5 WORST CHORD RECOGNITION PAGES")
+        print(f"{'='*60}")
+        for i, m in enumerate(worst_5):
+            cm = m['page_chord_metrics']
+            img_name = Path(m['image']).stem
+            print(f"\n  {i+1}. {img_name}")
+            print(f"     Alignment score: {cm['alignment_score']:.1f}%  (ED={cm['edit_distance']}, pred={cm['pred_count']}, gt={cm['gt_count']})")
+            print(f"     Matches={cm['matches']}, Subs={cm['substitutions']}, Ins={cm['insertions']}, Del={cm['deletions']}")
+            if cm['matches'] > 0:
+                print(f"     Quality acc: {cm['quality_accuracy']:.1f}%  Extension acc: {cm['extension_accuracy']:.1f}%  Full acc: {cm['full_accuracy']:.1f}%")
+            else:
+                print(f"     No matched roots to evaluate quality/extension")
+            print(f"     Pred chords: {cm['aligned_pairs'][:10]}{'...' if len(cm['aligned_pairs']) > 10 else ''}")
+        print(f"{'='*60}\n")
 
