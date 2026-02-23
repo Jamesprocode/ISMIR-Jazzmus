@@ -20,8 +20,11 @@ import re
 from collections import defaultdict
 from pathlib import Path
 
+import io
 import numpy as np
-from datasets import load_dataset
+import pandas as pd
+from PIL import Image as PILImage
+from datasets import load_dataset, Dataset
 from tqdm import tqdm
 
 
@@ -79,14 +82,7 @@ def save_system_regions(image, regions, output_dir, idx):
 
 def save_ground_truth(regions, output_dir, idx, file_prefix="img"):
     """Save ground truth **kern annotations."""
-    kern_content = ""
-
-    if "systems" in regions:
-        for r_idx, system in enumerate(regions["systems"]):
-            if "**kern" in system:
-                kern_content += system["**kern"]
-                if r_idx < len(regions["systems"]) - 1:
-                    kern_content += "\n"
+    kern_content = regions.get("encodings", {}).get("**kern", "")
 
     output_path = f"{output_dir}/gt/{file_prefix}_{idx}.txt"
     with open(output_path, "w") as f:
@@ -97,6 +93,7 @@ def save_ground_truth(regions, output_dir, idx, file_prefix="img"):
 
 def prepare_dual_dataset(
     hf_name="PRAIG/JAZZMUS",
+    parquet_path=None,
     fullpage_name="jazzmus_fullpage",
     systems_name="jazzmus_systems",
     folder="data",
@@ -112,9 +109,15 @@ def prepare_dual_dataset(
 
     # Load dataset
     print("="*70)
-    print("Loading HuggingFace dataset...")
-    print("="*70)
-    dataset = load_dataset(hf_name, split="train", num_proc=4)
+    if parquet_path:
+        print(f"Loading local parquet file: {parquet_path}")
+        print("="*70)
+        df = pd.read_parquet(parquet_path)
+        dataset = Dataset.from_pandas(df)
+    else:
+        print("Loading HuggingFace dataset...")
+        print("="*70)
+        dataset = load_dataset(hf_name, split="train", num_proc=4)
     print(f"✓ Dataset loaded: {len(dataset)} images\n")
 
     num_images = min(len(dataset), max_images) if max_images else len(dataset)
@@ -217,6 +220,11 @@ def prepare_dual_dataset(
 
     for idx in tqdm(range(num_images), desc="Processing images"):
         image = dataset[idx]["image"]
+        if isinstance(image, dict):
+            if image.get("bytes"):
+                image = PILImage.open(io.BytesIO(image["bytes"]))
+            elif image.get("path"):
+                image = PILImage.open(image["path"])
         annotation_data = dataset[idx]["annotation"]
 
         if isinstance(annotation_data, str):
@@ -298,6 +306,7 @@ if __name__ == "__main__":
     # Edit these values directly in the code
     prepare_dual_dataset(
         hf_name="PRAIG/JAZZMUS",
+        parquet_path="/Users/james/Documents/Workspace/JAZZMUS/data/train-00000-of-00001.parquet",  # Set to None to load from HuggingFace
         fullpage_name="jazzmus_fullpage",
         systems_name="jazzmus_systems",
         folder="data",

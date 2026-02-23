@@ -3,7 +3,7 @@ gin_config
 lightning
 loguru
 musicdiff
-numpy
+numpy<2.0
 opencv_python
 opencv_python_headless
 Pillow
