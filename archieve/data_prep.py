@@ -306,9 +306,9 @@ if __name__ == "__main__":
     # Edit these values directly in the code
     prepare_dual_dataset(
         hf_name="PRAIG/JAZZMUS",
-        parquet_path="/Users/james/Documents/Workspace/JAZZMUS/data/train-00000-of-00001.parquet",  # Set to None to load from HuggingFace
-        fullpage_name="jazzmus_fullpage",
-        systems_name="jazzmus_systems",
+        parquet_path="/Users/james/Documents/Workspace/JAZZMUS/JAZZMUS_Synthetic/data/train-00000-of-00001.parquet",  # Set to None to load from HuggingFace
+        fullpage_name="jazzmus_fullpage_syn",
+        systems_name="jazzmus_systems_syn",
         folder="data",
         train_pct=0.70,
         val_pct=0.10,
