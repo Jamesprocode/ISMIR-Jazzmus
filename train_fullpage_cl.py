@@ -5,14 +5,17 @@ Phase 2 of the two-phase training pipeline:
   Phase 1 → train.py           (system-level, produces the starting checkpoint)
   Phase 2 → train_fullpage_cl  (this script, curriculum from systems → full pages)
 
-Curriculum stages (each lasts `increase_steps` steps):
-  stage 1: single systems (vocab warm-up)
-  stage 2: stack up to 2 systems
-  stage 3: stack up to 3 systems
-  stage 4: stack up to 4 systems
-  stage 5: stack up to 5 systems
-  fine-tune A: stacked (prob 90%→20%) + real full pages
-  fine-tune B: real full pages only
+Curriculum stages (each lasts `increase_epochs` epochs):
+  stage 1: single systems (vocab warm-up)          epochs   0 – 99
+  stage 2: stack up to 2 systems                   epochs 100 – 199
+  stage 3: stack up to 3 systems                   epochs 200 – 299
+  stage 4: stack up to 4 systems                   epochs 300 – 399
+  stage 5: stack up to 5 systems                   epochs 400 – 499
+  fine-tune A: stacked (90%→20%) + real full pages epochs 500 – 599
+  fine-tune B: real full pages only                epochs 600+
+
+One epoch = dataset_length / batch_size samples, matching Phase-1 epoch size.
+Stage progression is therefore independent of batch_size.
 
 Example usage:
   python train_fullpage_cl.py \
@@ -37,6 +40,18 @@ from jazzmus.curriculum.dataset import JazzCLDataModule
 from jazzmus.utils.file_utils import check_folders
 
 
+@gin.configurable
+def cl_hparams(lr: float = 5e-5, accumulate_grad_batches: int = 64):
+    """Gin-configurable holder for CL training hyperparameters.
+
+    Set in the gin config as:
+        cl_hparams.lr                      = 5e-5
+        cl_hparams.accumulate_grad_batches = 64
+    CLI args (--lr, --accumulate_grad_batches) override gin values.
+    """
+    return lr, accumulate_grad_batches
+
+
 def train(
     config: str,
     checkpoint_path: str,
@@ -56,10 +71,11 @@ def train(
     check_folders()
 
     # Resolve hyperparams: gin config is the default, CLI arg overrides
+    gin_lr, gin_accum = cl_hparams()
     if lr is None:
-        lr = gin.query_parameter("train.lr")
+        lr = gin_lr
     if accumulate_grad_batches is None:
-        accumulate_grad_batches = gin.query_parameter("train.accumulate_grad_batches")
+        accumulate_grad_batches = gin_accum
 
     print("FULL-PAGE CURRICULUM TRAINING")
     print(f"  Checkpoint : {checkpoint_path}")

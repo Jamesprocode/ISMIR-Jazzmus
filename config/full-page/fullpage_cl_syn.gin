@@ -41,8 +41,8 @@ SMT_Trainer.warmup_steps  = 150
 SMT_Trainer.load_pretrained = False
 
 # TRAINING SCRIPT HYPERPARAMS (override on CLI: --lr 1e-5 --accumulate_grad_batches 32)
-train.lr                      = 5e-5
-train.accumulate_grad_batches = 64
+cl_hparams.lr                      = 5e-5
+cl_hparams.accumulate_grad_batches = 64
 
 # VOCAB
 make_vocabulary.pathToSave = "vocab"
