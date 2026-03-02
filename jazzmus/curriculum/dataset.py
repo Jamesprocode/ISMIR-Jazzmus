@@ -238,6 +238,7 @@ class JazzCurriculumDataset(Dataset):
         width_tolerance: float = 0.15,
         augment_images: bool = False,
         dataset_length: int = 40000,
+        fullpage_data_path: str = "",
     ):
         super().__init__()
 
@@ -292,6 +293,20 @@ class JazzCurriculumDataset(Dataset):
         # Public: used by training script to initialise the model stage
         self.curriculum_stage_beginning = curriculum_start
 
+        # Optional real full-page images for fine-tuning mix (prob decays 0.9→0.2)
+        self._fullpage_dataset = None
+        if fullpage_data_path:
+            try:
+                self._fullpage_dataset = GrandStaffFullPage(
+                    data_path=fullpage_data_path,
+                    split=split,
+                    fold=fold,
+                    augment=augment_images,
+                )
+                print(f"  Fine-tune mix: loaded {len(self._fullpage_dataset)} real full-page images")
+            except FileNotFoundError:
+                print(f"  Warning: no full-page {split} split at {fullpage_data_path}; fine-tune mix disabled")
+
     # ── vocabulary ────────────────────────────────────────────────────────────
 
     def _tokenize_gt(self):
@@ -309,7 +324,10 @@ class JazzCurriculumDataset(Dataset):
         """Return tokenised GT for vocabulary building (lazy)."""
         if self.system_y is None:
             self.system_y = self._tokenize_gt()
-        return self.system_y
+        result = list(self.system_y)
+        if self._fullpage_dataset is not None:
+            result.extend(self._fullpage_dataset.get_gt())
+        return result
 
     def set_dictionaries(self, w2i, i2w):
         self.w2i = w2i
@@ -317,6 +335,8 @@ class JazzCurriculumDataset(Dataset):
         self.padding_token = w2i["<pad>"]
         if self.system_y is None:
             self.system_y = self._tokenize_gt()
+        if self._fullpage_dataset is not None:
+            self._fullpage_dataset.set_dictionaries(w2i, i2w)
 
     # ── stage / schedule helpers (mirrors SMT CurriculumTrainingDataset) ──────
 
@@ -375,9 +395,19 @@ class JazzCurriculumDataset(Dataset):
 
         if step < max_cl_steps:
             stage = (step // self.increase_steps) + self.curriculum_start
-            n = random.randint(1, stage)
+            n = random.randint(self.curriculum_start, stage)
         else:
-            # Fine-tuning: keep sampling around the max
+            fine_tune_step = step - max_cl_steps
+            if self._fullpage_dataset is not None and fine_tune_step >= self.finetune_steps:
+                # Phase B: real full pages only
+                idx = random.randrange(len(self._fullpage_dataset))
+                return self._fullpage_dataset[idx]
+            # Phase A: mix — synth prob decays 0.9 → 0.2 over finetune_steps
+            synth_prob = self.linear_scheduler_synthetic(step)
+            if self._fullpage_dataset is not None and random.random() > synth_prob:
+                idx = random.randrange(len(self._fullpage_dataset))
+                return self._fullpage_dataset[idx]
+            # Stacked synthetic sample
             n = random.randint(self.curriculum_start, self.curriculum_start + self.num_cl_stages - 1)
 
         img, y_tokens, _ = stack_systems(
@@ -534,6 +564,7 @@ class JazzCLDataModule(LightningDataModule):
             fold=fold,
             split="train",
             augment_images=True,
+            fullpage_data_path=fullpage_data_path,
         )
 
         self.val_set = JazzStackedValDataset(

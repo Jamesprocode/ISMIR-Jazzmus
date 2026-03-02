@@ -14,6 +14,17 @@ from typing import Callable
 import wandb
 from jazzmus.smt_trainer import SMT_Trainer
 
+try:
+    from chord_metrics import (
+        extract_tokens_from_mxhm,
+        compute_page_chord_metrics,
+        aggregate_page_chord_metrics,
+    )
+    from inference import extract_spines
+    _HAS_CHORD_METRICS = True
+except ImportError:
+    _HAS_CHORD_METRICS = False
+
 
 class CurriculumSMTTrainer(SMT_Trainer):
     """
@@ -102,3 +113,53 @@ class CurriculumSMTTrainer(SMT_Trainer):
             self.predict_output(batch)
         finally:
             self.model.maxlen = old_maxlen
+
+    # ── chord metrics ──────────────────────────────────────────────────────────
+
+    def _log_chord_metrics(self, preds, grtrs, step):
+        """Compute chord edit-distance metrics and log them to WandB.
+
+        Requires chord_metrics.py and inference.py at the project root.
+        Silently skips any sample whose prediction is malformed (e.g. early
+        in training before the model produces valid kern output).
+
+        Logged metrics (all 0-100 %):
+          {step}/chord_ser  – chord-only Symbol Error Rate (no dots)
+          {step}/root_ser   – root-note Symbol Error Rate
+        """
+        if not _HAS_CHORD_METRICS or not preds:
+            return
+
+        page_metrics_list = []
+        for pred, gt in zip(preds, grtrs):
+            try:
+                pred_spines = extract_spines(pred)
+                gt_spines   = extract_spines(gt)
+                if "**mxhm" not in pred_spines or "**mxhm" not in gt_spines:
+                    continue
+                pred_tokens = extract_tokens_from_mxhm(pred_spines["**mxhm"])
+                gt_tokens   = extract_tokens_from_mxhm(gt_spines["**mxhm"])
+                if pred_tokens and gt_tokens:
+                    page_metrics_list.append(
+                        compute_page_chord_metrics(pred_tokens, gt_tokens)
+                    )
+            except Exception:
+                pass
+
+        if not page_metrics_list:
+            return
+
+        agg = aggregate_page_chord_metrics(page_metrics_list)
+        self.log(f"{step}/chord_ser", agg["agg_ser_no_dots"],
+                 on_epoch=True, prog_bar=True)
+        self.log(f"{step}/root_ser",  agg["agg_root_ser"],
+                 on_epoch=True, prog_bar=False)
+
+    def on_validation_epoch_end(self):
+        # Chord metrics must be computed before super() clears self.preds / self.grtrs
+        self._log_chord_metrics(self.preds, self.grtrs, step="val")
+        super().on_validation_epoch_end()
+
+    def on_test_epoch_end(self):
+        self._log_chord_metrics(self.preds, self.grtrs, step="test")
+        super().on_test_epoch_end()

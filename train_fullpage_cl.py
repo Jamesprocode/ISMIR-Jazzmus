@@ -6,11 +6,13 @@ Phase 2 of the two-phase training pipeline:
   Phase 2 → train_fullpage_cl  (this script, curriculum from systems → full pages)
 
 Curriculum stages (each lasts `increase_steps` steps):
+  stage 1: single systems (vocab warm-up)
   stage 2: stack up to 2 systems
   stage 3: stack up to 3 systems
   stage 4: stack up to 4 systems
   stage 5: stack up to 5 systems
-  fine-tune: stacked (prob 90%→20%) + real full pages
+  fine-tune A: stacked (prob 90%→20%) + real full pages
+  fine-tune B: real full pages only
 
 Example usage:
   python train_fullpage_cl.py \
@@ -41,7 +43,7 @@ def train(
     fold: int = 0,
     epochs: int = 10000,
     batch_size: int = 1,
-    accumulate_grad_batches: int = 8,
+    accumulate_grad_batches: int = 64,
     lr: float = 5e-5,
     skip_cl_steps: int = 0,
     debug: bool = False,
@@ -159,14 +161,19 @@ def train(
     total_cl_steps    = increase_steps * num_cl_stages
     min_steps         = total_cl_steps - skip_steps_offset
 
-    val_check_interval = 1000  # validate every 1000 optimizer steps (6× per CL stage)
+    # Validate ~6× per CL stage.
+    # val_check_interval counts *batches* in Lightning, and each optimizer step
+    # consumes accumulate_grad_batches batches, so we must scale accordingly.
+    # (Phase 1 used batch=64, accumulate=1; we use batch=1, accumulate=64 →
+    #  same effective batch size, same data volume per optimizer step.)
+    val_check_interval = (increase_steps * accumulate_grad_batches) // 6
 
     trainer = Trainer(
         logger=wandb_logger,
         callbacks=[best_ckpt, stage_ckpt, lr_monitor],
         max_epochs=epochs,
         min_steps=min_steps,
-        val_check_interval=val_check_interval,   # validate 3× per CL stage
+        val_check_interval=val_check_interval,
         precision="bf16-mixed",
         accelerator="auto",
         accumulate_grad_batches=accumulate_grad_batches,
