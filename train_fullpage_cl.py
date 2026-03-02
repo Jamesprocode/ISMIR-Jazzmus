@@ -147,7 +147,7 @@ def train(
     # ── logger ─────────────────────────────────────────────────────────────────
     tokenizer_type = gin.query_parameter("JazzCurriculumDataset.tokenizer_type")
     wandb_logger = WandbLogger(
-        project="jazzmus",
+        project="jazz full page omr cl",
         name=f"cl_{tokenizer_type}_lr{lr}_fold{fold}",
         group="curriculum_fullpage",
         log_model=False,

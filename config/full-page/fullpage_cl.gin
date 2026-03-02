@@ -26,7 +26,7 @@ JazzCurriculumDataset.dataset_length    = 40000
 JazzCurriculumDataset.width_tolerance   = 0.10   # group systems within ±15% width
 
 # STACKED VAL DATASET (val — generated on the fly, matches current stage n)
-JazzStackedValDataset.dataset_length   = 200
+JazzStackedValDataset.dataset_length   = 20
 
 # FULL-PAGE DATASET (test only)
 GrandStaffFullPage.tokenizer_type      = "medium"

@@ -44,7 +44,7 @@ class CurriculumSMTTrainer(SMT_Trainer):
         """
         self._stage_calculator = calc
 
-    # ── training step override (adds stage logging) ───────────────────────────
+    # ── training / validation step overrides ──────────────────────────────────
 
     def on_load_checkpoint(self, checkpoint):
         """Drop weights whose shape doesn't match the current model.
@@ -69,4 +69,36 @@ class CurriculumSMTTrainer(SMT_Trainer):
         stage = self._stage_calculator(self.global_step)
         self.log("curriculum/stage", float(stage), on_step=True, prog_bar=True)
 
+        # Log a sample image every 200 optimizer steps so WandB shows
+        # curriculum stacks at each stage (base class only logs at batch_idx==0
+        # which is once per 40 000-sample epoch — far too infrequent).
+        if self.global_step % 200 == 0:
+            x = batch[0]
+            img_np = x[0].squeeze().cpu().numpy()
+            self.logger.experiment.log({
+                "curriculum/sample_image": wandb.Image(
+                    img_np,
+                    caption=f"step={self.global_step}  stage={stage}",
+                ),
+            })
+
         return loss
+
+    def validation_step(self, batch, batch_idx):
+        (x, di, y, path_to_images) = batch
+        loss = self.compute_loss(batch)
+        self.log("val/loss", loss, on_epoch=True, batch_size=x.shape[0], prog_bar=True)
+
+        # Cap greedy-decode steps proportionally to the current curriculum stage.
+        # model.maxlen is sized for the worst case (5 stacked systems + 10 % buffer).
+        # At stage 2 the GT is only ~2/5 of that length, so decoding to the full
+        # maxlen wastes ~3× the time.  We cap at (stage × 550) tokens which gives
+        # generous headroom (~50 % above the expected per-system token count of ~346).
+        stage = int(self._stage_calculator(self.global_step))
+        capped_maxlen = min(self.model.maxlen, max(512, stage * 550))
+        old_maxlen = self.model.maxlen
+        self.model.maxlen = capped_maxlen
+        try:
+            self.predict_output(batch)
+        finally:
+            self.model.maxlen = old_maxlen
