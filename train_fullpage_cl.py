@@ -43,9 +43,9 @@ def train(
     fold: int = 0,
     epochs: int = 10000,
     batch_size: int = 1,
-    accumulate_grad_batches: int = 64,
-    lr: float = 5e-5,
-    skip_cl_steps: int = 0,
+    accumulate_grad_batches: int = None,  # read from gin; CLI overrides
+    lr: float = None,                     # read from gin; CLI overrides
+    skip_cl_epochs: int = 0,
     debug: bool = False,
 ):
     gc.collect()
@@ -55,12 +55,18 @@ def train(
     gin.parse_config_file(config)
     check_folders()
 
+    # Resolve hyperparams: gin config is the default, CLI arg overrides
+    if lr is None:
+        lr = gin.query_parameter("train.lr")
+    if accumulate_grad_batches is None:
+        accumulate_grad_batches = gin.query_parameter("train.accumulate_grad_batches")
+
     print("FULL-PAGE CURRICULUM TRAINING")
     print(f"  Checkpoint : {checkpoint_path}")
     print(f"  Config     : {config}")
     print(f"  Fold       : {fold}")
     print(f"  LR         : {lr}")
-    print(f"  Skip steps : {skip_cl_steps}")
+    print(f"  Skip epochs: {skip_cl_epochs}")
 
     # ── datamodule ─────────────────────────────────────────────────────────────
     datamodule = JazzCLDataModule(fold=fold, batch_size=batch_size)
@@ -119,8 +125,8 @@ def train(
     model.set_stage_calculator(datamodule.train_set.get_stage_calculator())
 
     # ── callbacks ──────────────────────────────────────────────────────────────
-    increase_steps = gin.query_parameter("JazzCurriculumDataset.increase_steps")
-    num_cl_stages  = gin.query_parameter("JazzCurriculumDataset.num_cl_stages")
+    increase_epochs = gin.query_parameter("JazzCurriculumDataset.increase_epochs")
+    num_cl_stages   = gin.query_parameter("JazzCurriculumDataset.num_cl_stages")
 
     best_ckpt = ModelCheckpoint(
         dirpath="weights/curriculum",
@@ -157,23 +163,17 @@ def train(
     )
 
     # ── trainer ────────────────────────────────────────────────────────────────
-    skip_steps_offset = skip_cl_steps * increase_steps
-    total_cl_steps    = increase_steps * num_cl_stages
-    min_steps         = total_cl_steps - skip_steps_offset
-
-    # Validate ~6× per CL stage.
-    # val_check_interval counts *batches* in Lightning, and each optimizer step
-    # consumes accumulate_grad_batches batches, so we must scale accordingly.
-    # (Phase 1 used batch=64, accumulate=1; we use batch=1, accumulate=64 →
-    #  same effective batch size, same data volume per optimizer step.)
-    val_check_interval = (increase_steps * accumulate_grad_batches) // 6
+    # One epoch = dataset_length / batch_size ≈ 3500 / 64 ≈ 55 optimizer steps —
+    # same data volume as one Phase-1 epoch.  Stage advances every increase_epochs
+    # epochs, independent of batch_size.
+    total_cl_epochs = increase_epochs * num_cl_stages
+    min_epochs      = total_cl_epochs - skip_cl_epochs * increase_epochs
 
     trainer = Trainer(
         logger=wandb_logger,
         callbacks=[best_ckpt, stage_ckpt, lr_monitor],
         max_epochs=epochs,
-        min_steps=min_steps,
-        val_check_interval=val_check_interval,
+        min_epochs=min_epochs,
         precision="bf16-mixed",
         accelerator="auto",
         accumulate_grad_batches=accumulate_grad_batches,

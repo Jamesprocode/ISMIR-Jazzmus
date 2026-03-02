@@ -50,7 +50,7 @@ class CurriculumSMTTrainer(SMT_Trainer):
 
     def set_stage_calculator(self, calc: Callable[[int], int]):
         """
-        Inject a step → stage calculator so training_step can log the
+        Inject an epoch → stage calculator so training_step can log the
         current curriculum stage to wandb.
         """
         self._stage_calculator = calc
@@ -77,19 +77,18 @@ class CurriculumSMTTrainer(SMT_Trainer):
     def training_step(self, batch, batch_idx):
         loss = super().training_step(batch, batch_idx)
 
-        stage = self._stage_calculator(self.global_step)
+        stage = self._stage_calculator(self.current_epoch)
         self.log("curriculum/stage", float(stage), on_step=True, prog_bar=True)
 
-        # Log a sample image every 200 optimizer steps so WandB shows
-        # curriculum stacks at each stage (base class only logs at batch_idx==0
-        # which is once per 40 000-sample epoch — far too infrequent).
-        if self.global_step % 200 == 0:
+        # Log one sample image per epoch (first batch) so WandB shows
+        # what curriculum stacks look like at each stage.
+        if batch_idx == 0:
             x = batch[0]
             img_np = x[0].squeeze().cpu().numpy()
             self.logger.experiment.log({
                 "curriculum/sample_image": wandb.Image(
                     img_np,
-                    caption=f"step={self.global_step}  stage={stage}",
+                    caption=f"epoch={self.current_epoch}  stage={stage}",
                 ),
             })
 
@@ -105,7 +104,7 @@ class CurriculumSMTTrainer(SMT_Trainer):
         # At stage 2 the GT is only ~2/5 of that length, so decoding to the full
         # maxlen wastes ~3× the time.  We cap at (stage × 550) tokens which gives
         # generous headroom (~50 % above the expected per-system token count of ~346).
-        stage = int(self._stage_calculator(self.global_step))
+        stage = int(self._stage_calculator(self.current_epoch))
         capped_maxlen = min(self.model.maxlen, max(512, stage * 550))
         old_maxlen = self.model.maxlen
         self.model.maxlen = capped_maxlen

@@ -4,12 +4,17 @@ Curriculum dataset for full-page jazz lead sheet recognition.
 Strategy: start from a system-level checkpoint and gradually expose the model
 to longer inputs by stacking N real system images vertically.
 
-Stages (each lasts `increase_steps` steps):
+Stages (each lasts `increase_epochs` epochs):
+    stage 1 → N ∈ {1}
     stage 2 → N ∈ {1, 2}
     stage 3 → N ∈ {1, 2, 3}
     stage 4 → N ∈ {1, 2, 3, 4}
     stage 5 → N ∈ {1, 2, 3, 4, 5}
-Fine-tune → probability P (90→20 %) stacked, rest = real full pages
+Fine-tune A → probability P (90→20 %) stacked + real full pages  (finetune_epochs)
+Fine-tune B → real full pages only
+
+dataset_length controls epoch size; set it to match the real system dataset
+(~3 500 images) so one epoch mirrors Phase-1 training exactly.
 """
 
 import random
@@ -229,26 +234,26 @@ class JazzCurriculumDataset(Dataset):
         split: str = "train",
         tokenizer_type: str = "medium",
         system_height: int = 128,
-        increase_steps: int = 6000,
-        num_cl_stages: int = 4,       # stages: 2, 3, 4, 5 systems
-        curriculum_start: int = 2,    # first stage stacks up to this many systems
+        increase_epochs: int = 100,
+        num_cl_stages: int = 5,       # stages: 1, 2, 3, 4, 5 systems
+        curriculum_start: int = 1,    # first stage stacks up to this many systems
         max_synth_prob: float = 0.9,
         min_synth_prob: float = 0.2,
-        finetune_steps: int = 20000,
+        finetune_epochs: int = 100,
         width_tolerance: float = 0.15,
         augment_images: bool = False,
-        dataset_length: int = 40000,
+        dataset_length: int = 3500,
         fullpage_data_path: str = "",
     ):
         super().__init__()
 
         self.system_height = system_height
-        self.increase_steps = increase_steps
+        self.increase_epochs = increase_epochs
         self.num_cl_stages = num_cl_stages
         self.curriculum_start = curriculum_start
         self.max_synth_prob = max_synth_prob
         self.min_synth_prob = min_synth_prob
-        self.finetune_steps = finetune_steps
+        self.finetune_epochs = finetune_epochs
         self.width_tolerance = width_tolerance
         self.augment_images = augment_images
         self.tokenizer_type = tokenizer_type
@@ -341,23 +346,23 @@ class JazzCurriculumDataset(Dataset):
     # ── stage / schedule helpers (mirrors SMT CurriculumTrainingDataset) ──────
 
     def set_trainer_data(self, trainer):
-        """Inject the Lightning Trainer so __getitem__ can read global_step."""
+        """Inject the Lightning Trainer so __getitem__ can read current_epoch."""
         self.trainer = trainer
 
     def get_stage_calculator(self):
-        """Return a closure: step → current curriculum stage integer."""
-        increase_steps = self.increase_steps
+        """Return a closure: epoch → current curriculum stage integer."""
+        increase_epochs = self.increase_epochs
         start = self.curriculum_start
 
-        def calc(step):
-            return (step // increase_steps) + start
+        def calc(epoch):
+            return (epoch // increase_epochs) + start
 
         return calc
 
-    def linear_scheduler_synthetic(self, step):
+    def linear_scheduler_synthetic(self, epoch):
         """Probability of using a stacked sample during fine-tuning (decays 0.9→0.2)."""
-        max_cl_steps = self.increase_steps * self.num_cl_stages
-        frac = (step - max_cl_steps) / max(self.finetune_steps, 1)
+        max_cl_epochs = self.increase_epochs * self.num_cl_stages
+        frac = (epoch - max_cl_epochs) / max(self.finetune_epochs, 1)
         prob = self.max_synth_prob + frac * (self.min_synth_prob - self.max_synth_prob)
         return round(max(self.min_synth_prob, min(self.max_synth_prob, prob)), 4)
 
@@ -390,20 +395,20 @@ class JazzCurriculumDataset(Dataset):
         return self._dataset_length
 
     def __getitem__(self, index):
-        step = self.trainer.global_step if self.trainer is not None else 0
-        max_cl_steps = self.increase_steps * self.num_cl_stages
+        epoch = self.trainer.current_epoch if self.trainer is not None else 0
+        max_cl_epochs = self.increase_epochs * self.num_cl_stages
 
-        if step < max_cl_steps:
-            stage = (step // self.increase_steps) + self.curriculum_start
+        if epoch < max_cl_epochs:
+            stage = (epoch // self.increase_epochs) + self.curriculum_start
             n = random.randint(self.curriculum_start, stage)
         else:
-            fine_tune_step = step - max_cl_steps
-            if self._fullpage_dataset is not None and fine_tune_step >= self.finetune_steps:
+            fine_tune_epoch = epoch - max_cl_epochs
+            if self._fullpage_dataset is not None and fine_tune_epoch >= self.finetune_epochs:
                 # Phase B: real full pages only
                 idx = random.randrange(len(self._fullpage_dataset))
                 return self._fullpage_dataset[idx]
-            # Phase A: mix — synth prob decays 0.9 → 0.2 over finetune_steps
-            synth_prob = self.linear_scheduler_synthetic(step)
+            # Phase A: mix — synth prob decays 0.9 → 0.2 over finetune_epochs
+            synth_prob = self.linear_scheduler_synthetic(epoch)
             if self._fullpage_dataset is not None and random.random() > synth_prob:
                 idx = random.randrange(len(self._fullpage_dataset))
                 return self._fullpage_dataset[idx]
@@ -425,7 +430,7 @@ class JazzCurriculumDataset(Dataset):
         y = torch.from_numpy(np.asarray(y_ids, dtype=np.int64))
         decoder_input = self.apply_teacher_forcing(y)
 
-        label = f"stage{stage if step < max_cl_steps else 'ft'}_n{n}"
+        label = f"stage{stage if epoch < max_cl_epochs else 'ft'}_n{n}"
         return x, decoder_input, y, label
 
 
@@ -450,15 +455,15 @@ class JazzStackedValDataset(Dataset):
         fold: int = 0,
         tokenizer_type: str = "medium",
         system_height: int = 128,
-        increase_steps: int = 6000,
-        num_cl_stages: int = 4,
-        curriculum_start: int = 2,
+        increase_epochs: int = 100,
+        num_cl_stages: int = 5,
+        curriculum_start: int = 1,
         width_tolerance: float = 0.15,
         dataset_length: int = 200,
     ):
         super().__init__()
         self.system_height = system_height
-        self.increase_steps = increase_steps
+        self.increase_epochs = increase_epochs
         self.num_cl_stages = num_cl_stages
         self.curriculum_start = curriculum_start
         self.width_tolerance = width_tolerance
@@ -513,13 +518,13 @@ class JazzStackedValDataset(Dataset):
         return self._dataset_length
 
     def __getitem__(self, index):
-        step = self.trainer.global_step if self.trainer is not None else 0
-        max_cl_steps = self.increase_steps * self.num_cl_stages
+        epoch = self.trainer.current_epoch if self.trainer is not None else 0
+        max_cl_epochs = self.increase_epochs * self.num_cl_stages
 
-        if step < max_cl_steps:
-            n = (step // self.increase_steps) + self.curriculum_start  # max n for stage
+        if epoch < max_cl_epochs:
+            n = (epoch // self.increase_epochs) + self.curriculum_start  # max n for stage
         else:
-            n = self.curriculum_start + self.num_cl_stages - 1         # max n in fine-tune
+            n = self.curriculum_start + self.num_cl_stages - 1           # max n in fine-tune
 
         img, y_tokens, _ = stack_systems(
             self.system_x, self.system_y, n, self.system_height,

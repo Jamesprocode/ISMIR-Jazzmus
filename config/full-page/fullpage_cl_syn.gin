@@ -14,16 +14,19 @@ JazzCLDataModule.vocab_name        = "vocab_cl"
 JazzCLDataModule.num_workers       = 4
 
 # CURRICULUM DATASET
+# dataset_length ≈ real system dataset size → 1 epoch = 1 Phase-1 epoch of data.
+# Stage advances every increase_epochs epochs, independent of batch_size.
+# 5 stages × 100 epochs + 100 fine-tune epochs = 600 total epochs.
 JazzCurriculumDataset.tokenizer_type    = "medium"
 JazzCurriculumDataset.system_height     = 128
-JazzCurriculumDataset.increase_steps    = 6000
+JazzCurriculumDataset.increase_epochs   = 100
 JazzCurriculumDataset.num_cl_stages     = 5       # stages 1,2,3,4,5
 JazzCurriculumDataset.curriculum_start  = 1
 JazzCurriculumDataset.max_synth_prob    = 0.9
 JazzCurriculumDataset.min_synth_prob    = 0.2
-JazzCurriculumDataset.finetune_steps    = 6000    # after this, real full pages only
-JazzCurriculumDataset.dataset_length    = 40000
-JazzCurriculumDataset.width_tolerance   = 0.10   # group systems within ±15% width
+JazzCurriculumDataset.finetune_epochs   = 100     # Phase A; after this, real pages only
+JazzCurriculumDataset.dataset_length    = 3500    # matches ~3.5k Phase-1 system images
+JazzCurriculumDataset.width_tolerance   = 0.10   # group systems within ±10% width
 
 # STACKED VAL DATASET (val — generated on the fly, matches current stage n)
 JazzStackedValDataset.dataset_length   = 100
@@ -36,6 +39,10 @@ GrandStaffFullPage.max_fix_img_width   = 700
 # MODEL
 SMT_Trainer.warmup_steps  = 150
 SMT_Trainer.load_pretrained = False
+
+# TRAINING SCRIPT HYPERPARAMS (override on CLI: --lr 1e-5 --accumulate_grad_batches 32)
+train.lr                      = 5e-5
+train.accumulate_grad_batches = 64
 
 # VOCAB
 make_vocabulary.pathToSave = "vocab"
