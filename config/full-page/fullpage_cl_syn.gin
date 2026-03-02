@@ -1,0 +1,41 @@
+# ── Curriculum full-page training configuration ───────────────────────────────
+# Used by: train_fullpage_cl.py
+#
+# Curriculum stages (increase_steps each):
+#   stage 2 → N ∈ {1,2}   stage 3 → N ∈ {1,2,3}
+#   stage 4 → N ∈ {1,2,3,4}   stage 5 → N ∈ {1,2,3,4,5}
+# Fine-tune → stacked (90%→20%) + real full pages
+# ─────────────────────────────────────────────────────────────────────────────
+
+# DATA — system-level pool (stacking source)
+JazzCLDataModule.system_data_path  = "data/jazzmus_systems_syn/splits"
+JazzCLDataModule.fullpage_data_path = "data/jazzmus_fullpage_syn"
+JazzCLDataModule.vocab_name        = "vocab_cl"
+JazzCLDataModule.num_workers       = 4
+
+# CURRICULUM DATASET
+JazzCurriculumDataset.tokenizer_type    = "medium"
+JazzCurriculumDataset.system_height     = 128
+JazzCurriculumDataset.increase_steps    = 6000
+JazzCurriculumDataset.num_cl_stages     = 4       # stages 2,3,4,5
+JazzCurriculumDataset.curriculum_start  = 2
+JazzCurriculumDataset.max_synth_prob    = 0.9
+JazzCurriculumDataset.min_synth_prob    = 0.2
+JazzCurriculumDataset.finetune_steps    = 20000
+JazzCurriculumDataset.dataset_length    = 40000
+JazzCurriculumDataset.width_tolerance   = 0.10   # group systems within ±15% width
+
+# STACKED VAL DATASET (val — generated on the fly, matches current stage n)
+JazzStackedValDataset.dataset_length   = 200
+
+# FULL-PAGE DATASET (test only)
+GrandStaffFullPage.tokenizer_type      = "medium"
+GrandStaffFullPage.fixed_img_height    = 400
+GrandStaffFullPage.max_fix_img_width   = 700
+
+# MODEL
+SMT_Trainer.warmup_steps  = 150
+SMT_Trainer.load_pretrained = False
+
+# VOCAB
+make_vocabulary.pathToSave = "vocab"

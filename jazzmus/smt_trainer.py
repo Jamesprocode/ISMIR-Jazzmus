@@ -117,7 +117,7 @@ class SMT_Trainer(L.LightningModule):
 
     def forward(self, input, last_preds):
         return self.model(input, last_preds)
-    
+
     def compute_loss(self, batch):
         (
             x,

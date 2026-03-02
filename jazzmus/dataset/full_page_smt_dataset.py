@@ -106,7 +106,7 @@ def batch_preparation_img2seq(data):
     max_image_height = max(200, max([img.shape[1] for img in images]))
     # max_image_width = 1302
     # max_image_height = 800
-    print(f"Batch max image size: {(max([img.shape[1] for img in images]), max([img.shape[2] for img in images]))}")
+    # print(f"Batch max image size: {(max([img.shape[1] for img in images]), max([img.shape[2] for img in images]))}")
     X_train = torch.ones(
         size=[len(images), 1, max_image_height, max_image_width],
         dtype=torch.float32
